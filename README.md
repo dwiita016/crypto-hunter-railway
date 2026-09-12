@@ -1,52 +1,78 @@
-# Crypto Hunter Railway V1
+# Crypto Hunter Railway V2
 
-Railway-native replacement for the Google Apps Script runtime.
+V2 adds two things on top of the Railway V1 live-pair scanner:
 
-## Architecture
+1. **Multi-scan Trajectory** — decisions use recent scan history, not only one snapshot.
+2. **GMGN Basic Info tab** — a separate quick-screening view using the official `gmgn-cli token info` command.
 
-- API service: persistent Express service.
-- Scanner cron service: same repo, start command `npm run scan`.
-- PostgreSQL: shared persistence.
-- Dashboard: served by the API service from `/`.
-- DexScreener: canonical live market source for V1.
+## Scanner flow
 
-## Railway setup
+`Live Pair Gate → Base Score → Scan History → Trajectory → Decision`
 
-1. Push this folder to GitHub.
-2. Create a Railway project and deploy the repo.
-3. Add PostgreSQL to the same Railway project.
-4. Set `DATABASE_URL` in the API service from the PostgreSQL service.
-5. Create a second service from the same repo:
-   - Start command: `npm run scan`
-   - Cron schedule: `*/5 * * * *`
-   - Give it the same `DATABASE_URL`.
-6. Generate a public domain for the API service.
-7. Open the domain and add token addresses.
+Important behavior:
+- `NO_TRADABLE_PAIR` stays a hard SKIP.
+- First scan is only a baseline.
+- STRONG_WATCH requires confirmation across scans.
+- BUY is deliberately conservative: current strong conditions + two prior STRONG_WATCH confirmations.
+- Material LP / buy-pressure deterioration can downgrade to WARNING_PULLBACK or SKIP.
 
-## Important behavior
+## GMGN Basic Info tab
 
-A token can only reach WATCH/BUY-compatible states if at least one pair is currently tradable.
+This is a **quick review shortlist**, not a buy signal and not a full security audit.
 
-For pairs younger than 6 hours:
-- LP >= MIN_TRADABLE_LP_USD
-- current 5-minute activity must exist
+It uses GMGN Token Basic Info fields such as:
+- liquidity / market cap / holder count
+- Smart Money and KOL wallet counts
+- top-10 holder concentration
+- bundler / rat-trader concentration
+- dev holding status
+- buy/sell transaction ratios
+- buy/sell USD ratios
+- token age and social links
 
-For older pairs:
-- LP >= MIN_TRADABLE_LP_USD
-- current 5-minute activity OR meaningful 1-hour activity must exist
+Quick verdicts:
+- `REVIEW_NOW`
+- `REVIEW`
+- `LOW_PRIORITY`
+- `SKIP_QUICK`
 
-If no pair passes:
-- `decision = SKIP`
-- `signal = NO_TRADABLE_PAIR`
+## Railway variables
 
-This prevents stale 24h liquidity/volume from creating a false EARLY_WATCH like CATMETA.
+Existing:
+- `DATABASE_URL`
+- `CHAIN=solana`
+- `MIN_TRADABLE_LP_USD=5000`
+- `YOUNG_PAIR_HOURS=6`
+- `REQUEST_TIMEOUT_MS=12000`
 
-## API
+New for GMGN:
+- `GMGN_API_KEY=<your own GMGN API key>`
 
-- `GET /health`
-- `GET /api/results`
-- `GET /api/tokens`
-- `POST /api/tokens` body `{ "address": "...", "chain": "solana" }`
-- `DELETE /api/tokens/:address`
-- `POST /api/scan` body `{ "address": "..." }` for one token
-- `POST /api/scan-all`
+Create a GMGN API key from: https://gmgn.ai/ai
+
+Do not put the key in source code or GitHub.
+
+## Deploy update
+
+Replace the current GitHub repo contents with this V2 project (or commit the changed files).
+Railway will redeploy the API service automatically.
+
+For the scanner cron service, because it uses the same GitHub repo:
+- keep Start Command: `npm run scan`
+- keep Cron: `*/5 * * * *`
+- keep the same `DATABASE_URL`
+
+No extra cron is required for GMGN Basic Info in V2; GMGN screening is manual from its own tab to avoid unnecessary API usage/rate limits.
+
+## Health
+
+`GET /health` now includes:
+
+```json
+{
+  "ok": true,
+  "gmgnConfigured": true
+}
+```
+
+If `gmgnConfigured` is false, add `GMGN_API_KEY` to the API service's Railway Variables.

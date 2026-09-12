@@ -3,7 +3,8 @@ import {
   selectCanonicalPair,
   normalizePair
 } from "./providers/dexscreener.js";
-import { saveResult } from "./db.js";
+import { saveResult, getHistory } from "./db.js";
+import { applyTrajectory } from "./trajectory.js";
 
 function clamp(x, lo, hi) {
   return Math.max(lo, Math.min(hi, x));
@@ -51,7 +52,6 @@ function classify(c) {
     };
   }
 
-  // Hard negative momentum guard.
   if ((c.priceChange1h ?? 0) <= -20 && (c.priceChange5m ?? 0) <= 0) {
     return {
       risk: "HIGH",
@@ -104,15 +104,19 @@ export async function scanToken(address, chain = "solana", { persist = true } = 
   const selection = selectCanonicalPair(pairs, chain);
   const c = normalizePair(address, chain, selection, pairs);
   const score = scoreCoin(c);
-  const cls = classify(c);
+  const base = classify({ ...c, score });
+  const history = persist ? await getHistory(address, 4) : [];
+  const cls = applyTrajectory({ ...c, score }, base, history);
 
   const result = {
     ...c,
     score,
     ...cls,
+    confirmationCount: Math.min(history.length + 1, 3),
     raw: {
       source: c.source,
       pairSelectionReason: c.pairSelectionReason,
+      previousScansUsed: Math.min(history.length, 4),
       selectedPair: c.rawPair
     }
   };

@@ -5,61 +5,106 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Crypto Hunter // Railway</title>
 <style>
-  :root{color-scheme:dark;--bg:#050b0f;--panel:#09141b;--line:#1b3441;--txt:#e8f7ff;--muted:#7394a7;--green:#2df3aa;--purple:#ad7cff;--red:#ff5b72;--yellow:#ffd166}
-  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--txt);font:12px/1.35 ui-monospace,SFMono-Regular,Consolas,monospace}
-  header{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;gap:12px;align-items:center;justify-content:space-between;position:sticky;top:0;background:#050b0fee;backdrop-filter:blur(8px);z-index:3}
-  h1{margin:0;font-size:22px} h1 b{color:var(--green)}
-  button,input{background:#08151c;color:var(--txt);border:1px solid #244451;border-radius:8px;padding:9px 11px}
-  button{cursor:pointer} button.primary{border-color:#197452;color:var(--green)}
-  main{padding:12px}.toolbar{display:flex;gap:8px;margin-bottom:10px}.toolbar input{flex:1}
-  .cards{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:12px}.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px}.card small{color:var(--muted)}.card strong{display:block;font-size:18px;margin-top:3px}
-  .tableWrap{overflow:auto;border:1px solid var(--line);border-radius:10px;max-height:72vh}table{border-collapse:collapse;width:100%;min-width:1600px}th,td{border-bottom:1px solid #17303a;padding:8px 9px;text-align:left;white-space:nowrap}th{position:sticky;top:0;background:#08131a;color:#7ca2b8;font-size:10px}
-  .buy,.strong{color:var(--green)}.early{color:var(--purple)}.skip{color:var(--red)}.wait{color:#92a9b6}.bad{color:var(--red)}.ok{color:var(--green)}.muted{color:var(--muted)}
-  .reason{max-width:380px;overflow:hidden;text-overflow:ellipsis}.addr{font-size:9px;color:#4e7285}
+:root{color-scheme:dark;--bg:#050b0f;--panel:#09141b;--line:#1b3441;--txt:#e8f7ff;--muted:#7394a7;--green:#2df3aa;--purple:#ad7cff;--red:#ff5b72;--yellow:#ffd166}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:12px/1.35 ui-monospace,SFMono-Regular,Consolas,monospace}
+header{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;gap:12px;align-items:center;justify-content:space-between;position:sticky;top:0;background:#050b0fee;backdrop-filter:blur(8px);z-index:3}
+h1{margin:0;font-size:22px}h1 b{color:var(--green)}button,input{background:#08151c;color:var(--txt);border:1px solid #244451;border-radius:8px;padding:9px 11px}button{cursor:pointer}button.primary{border-color:#197452;color:var(--green)}
+main{padding:12px}.tabs{display:flex;gap:8px;margin-bottom:12px}.tab{padding:9px 14px}.tab.active{color:var(--green);border-color:var(--green)}.view{display:none}.view.active{display:block}
+.toolbar{display:flex;gap:8px;margin-bottom:10px}.toolbar input{flex:1}.cards{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:12px}.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px}.card small{color:var(--muted)}.card strong{display:block;font-size:18px;margin-top:3px}
+.tableWrap{overflow:auto;border:1px solid var(--line);border-radius:10px;max-height:72vh}table{border-collapse:collapse;width:100%;min-width:1650px}th,td{border-bottom:1px solid #17303a;padding:8px 9px;text-align:left;white-space:nowrap}th{position:sticky;top:0;background:#08131a;color:#7ca2b8;font-size:10px}
+.buy,.strong,.reviewnow{color:var(--green)}.early,.review{color:var(--purple)}.skip,.error{color:var(--red)}.wait,.low{color:#92a9b6}.bad{color:var(--red)}.ok{color:var(--green)}.muted{color:var(--muted)}.reason{max-width:420px;overflow:hidden;text-overflow:ellipsis}.addr{font-size:9px;color:#4e7285}
+.note{border:1px solid var(--line);background:var(--panel);padding:10px;border-radius:9px;margin-bottom:10px;color:var(--muted)}.note b{color:var(--txt)}
 .footer{padding:14px 16px;text-align:center;color:var(--muted);border-top:1px solid var(--line);margin-top:12px;font-size:11px}.footer b{color:var(--green)}
+a{color:var(--green)}
+@media(max-width:900px){.cards{grid-template-columns:repeat(2,1fr)}header{align-items:flex-start;flex-direction:column}}
 </style>
 </head>
 <body>
 <header>
-  <div><h1>CRYPTO <b>HUNTER</b> // RAILWAY</h1><div class="muted">Live pair validation → scoring → decision</div></div>
-  <div><button onclick="load()">↻ Refresh</button> <button class="primary" onclick="scanAll()">▶ Run Active Scan</button></div>
+  <div><h1>CRYPTO <b>HUNTER</b> // RAILWAY V2</h1><div class="muted">Live pair validation → multi-scan trajectory → decision</div></div>
+  <div><button onclick="loadCurrent()">↻ Refresh</button></div>
 </header>
 <main>
-  <div class="toolbar">
-    <input id="addr" placeholder="Solana token address...">
-    <button class="primary" onclick="addToken()">+ Add & Scan</button>
+  <div class="tabs">
+    <button class="tab active" data-tab="scanner" onclick="showTab('scanner')">SCANNER</button>
+    <button class="tab" data-tab="gmgn" onclick="showTab('gmgn')">GMGN BASIC INFO</button>
   </div>
-  <div class="cards" id="cards"></div>
-  <div class="tableWrap">
-    <table>
-      <thead><tr>
-        <th>TOKEN</th><th>PAIR LP</th><th>TOTAL LP</th><th>LIVE/ALL</th><th>SCORE</th>
-        <th>RISK</th><th>ENTRY</th><th>MC</th><th>VOL24H</th>
-        <th>CNT 5M</th><th>CNT 1H</th><th>CNT 6H</th><th>CNT 24H</th>
-        <th>5M %</th><th>1H %</th><th>24H %</th>
-        <th>SIGNAL</th><th>REASON</th><th>SCANNED</th><th>DELETE</th>
-      </tr></thead>
-      <tbody id="body"></tbody>
-    </table>
-  </div>
+
+  <section id="scanner" class="view active">
+    <div class="toolbar">
+      <input id="addr" placeholder="Solana token address...">
+      <button class="primary" onclick="addToken()">+ Add & Scan</button>
+      <button class="primary" onclick="scanAll(event)">▶ Run Active Scan</button>
+    </div>
+    <div class="cards" id="cards"></div>
+    <div class="tableWrap">
+      <table>
+        <thead><tr>
+          <th>TOKEN</th><th>PAIR LP</th><th>TOTAL LP</th><th>LIVE/ALL</th><th>SCORE</th>
+          <th>RISK</th><th>ENTRY</th><th>TRAJECTORY</th><th>MC</th><th>VOL24H</th>
+          <th>CNT 5M</th><th>CNT 1H</th><th>CNT 6H</th><th>CNT 24H</th>
+          <th>5M %</th><th>1H %</th><th>24H %</th>
+          <th>SIGNAL</th><th>REASON</th><th>SCANNED</th><th>DELETE</th>
+        </tr></thead>
+        <tbody id="body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="gmgn" class="view">
+    <div class="note">
+      <b>GMGN Token Basic Info = quick screening, bukan BUY signal.</b>
+      Tujuannya menyaring token mana yang layak ditinjau ulang sebelum masuk analisis utama.
+      Data memakai GMGN <code>token info</code>: liquidity, holders, Smart Money/KOL, concentration,
+      buy/sell count & USD pressure. Security audit belum termasuk di tab ini.
+    </div>
+    <div class="toolbar">
+      <input id="gmgnAddr" placeholder="Solana token address...">
+      <button class="primary" onclick="gmgnOne(event)">GMGN Scan One</button>
+      <button class="primary" onclick="gmgnActive(event)">Screen Active Tokens</button>
+    </div>
+    <div class="cards" id="gmgnCards"></div>
+    <div class="tableWrap">
+      <table>
+        <thead><tr>
+          <th>TOKEN</th><th>VERDICT</th><th>Q.SCORE</th><th>LIQ</th><th>MC</th><th>HOLDERS</th>
+          <th>SM</th><th>KOL</th><th>TOP10</th><th>BUNDLER</th><th>RAT</th><th>DEV</th>
+          <th>CNT 5M</th><th>USD 5M</th><th>CNT 1H</th><th>USD 1H</th><th>AGE</th>
+          <th>WHY</th><th>LINKS</th><th>SCANNED</th>
+        </tr></thead>
+        <tbody id="gmgnBody"></tbody>
+      </table>
+    </div>
+  </section>
 </main>
+<footer class="footer">Built for <b>@dwiita2026</b></footer>
+
 <script>
 const $=s=>document.querySelector(s);
+let activeTab="scanner";
 const money=n=>n==null?"—":new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",notation:"compact",maximumFractionDigits:1}).format(n);
 const num=(n,d=2)=>n==null?"—":Number(n).toFixed(d);
+const pctRatio=n=>n==null?"—":`${(Number(n)*100).toFixed(1)}%`;
 const pct=n=>n==null?"—":`${Number(n).toFixed(1)}%`;
+const age=n=>n==null?"—":Number(n)<24?`${Number(n).toFixed(1)}h`:`${(Number(n)/24).toFixed(1)}d`;
 const cls=d=>d==="BUY"?"buy":d==="STRONG_WATCH"?"strong":d==="EARLY_WATCH"?"early":d==="SKIP"?"skip":"wait";
+const qcls=v=>v==="REVIEW_NOW"?"reviewnow":v==="REVIEW"?"review":v==="ERROR"?"error":v==="SKIP_QUICK"?"skip":"low";
 
 async function api(url,opt){
-  const r=await fetch(url,opt);
-  const j=await r.json();
+  const r=await fetch(url,opt); const j=await r.json();
   if(!r.ok||j.ok===false) throw new Error(j.error||r.statusText);
   return j;
 }
+function showTab(name){
+  activeTab=name;
+  document.querySelectorAll(".view").forEach(x=>x.classList.toggle("active",x.id===name));
+  document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active",x.dataset.tab===name));
+  loadCurrent();
+}
+function loadCurrent(){ return activeTab==="gmgn"?loadGmgn():loadScanner(); }
 
-async function load(){
-  const j=await api("/api/results");
-  const a=j.results||[];
+async function loadScanner(){
+  const j=await api("/api/results"); const a=j.results||[];
   const c={BUY:0,STRONG_WATCH:0,EARLY_WATCH:0,WAIT:0,SKIP:0};
   a.forEach(x=>c[x.decision]=(c[x.decision]||0)+1);
   $("#cards").innerHTML=[
@@ -72,43 +117,79 @@ async function load(){
       <td><b>${x.symbol||"?"}</b><div class="addr">${x.address}</div></td>
       <td>${money(x.pair_lp_usd)}</td><td>${money(x.total_lp_usd)}</td>
       <td class="${x.tradable_pair_count>0?"ok":"bad"}">${x.tradable_pair_count}/${x.pair_count}</td>
-      <td>${num(x.score)}</td><td>${x.risk||"—"}</td>
-      <td class="${cls(x.decision)}"><b>${x.entry_state||x.decision}</b></td>
-      <td>${money(x.market_cap_usd)}</td><td>${money(x.volume_24h_usd)}</td>
-      <td>${num(x.buy_ratio_5m)}</td><td>${num(x.buy_ratio_1h)}</td>
-      <td>${num(x.buy_ratio_6h)}</td><td>${num(x.buy_ratio_24h)}</td>
+      <td>${num(x.score)}</td><td>${x.risk||"—"}</td><td class="${cls(x.decision)}"><b>${x.entry_state||x.decision}</b></td>
+      <td>${x.trajectory||"—"}</td><td>${money(x.market_cap_usd)}</td><td>${money(x.volume_24h_usd)}</td>
+      <td>${num(x.buy_ratio_5m)}</td><td>${num(x.buy_ratio_1h)}</td><td>${num(x.buy_ratio_6h)}</td><td>${num(x.buy_ratio_24h)}</td>
       <td>${pct(x.price_change_5m)}</td><td>${pct(x.price_change_1h)}</td><td>${pct(x.price_change_24h)}</td>
       <td class="${cls(x.decision)}">${x.signal||"—"}</td>
       <td class="reason" title="${(x.reason||"").replaceAll('"','&quot;')}">${x.reason||"—"}</td>
       <td>${x.scanned_at?new Date(x.scanned_at).toLocaleTimeString():"—"}</td>
-      <td><button onclick="del('${x.address}')">DELETE</button></td>
+      <td><button onclick="delToken('${x.address}')">DELETE</button></td>
     </tr>`).join("");
 }
 
 async function addToken(){
   const address=$("#addr").value.trim(); if(!address)return;
-  const b=document.activeElement; if(b)b.disabled=true;
   try{
     await api("/api/tokens",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({address,chain:"solana"})});
-    $("#addr").value=""; await load();
-  }catch(e){alert(e.message)}finally{if(b)b.disabled=false}
+    $("#addr").value=""; await loadScanner();
+  }catch(e){alert(e.message)}
 }
-
-async function scanAll(){
-  const b=event.currentTarget;b.disabled=true;b.textContent="Scanning...";
-  try{await api("/api/scan-all",{method:"POST"});await load()}
+async function scanAll(ev){
+  const b=ev.currentTarget;b.disabled=true;b.textContent="Scanning...";
+  try{await api("/api/scan-all",{method:"POST"});await loadScanner()}
   catch(e){alert(e.message)}
   finally{b.disabled=false;b.textContent="▶ Run Active Scan"}
 }
-
-async function del(address){
+async function delToken(address){
   if(!confirm("Disable token from active scan?"))return;
-  await api(`/api/tokens/${encodeURIComponent(address)}`,{method:"DELETE"});
-  await load();
+  await api(`/api/tokens/${encodeURIComponent(address)}`,{method:"DELETE"}); await loadScanner();
 }
-load();
-setInterval(load,30000);
+
+async function loadGmgn(){
+  const j=await api("/api/gmgn/basic"); const a=j.results||[];
+  const c={REVIEW_NOW:0,REVIEW:0,LOW_PRIORITY:0,SKIP_QUICK:0};
+  a.forEach(x=>c[x.quick_verdict]=(c[x.quick_verdict]||0)+1);
+  $("#gmgnCards").innerHTML=[
+    ["TOKENS",a.length],["REVIEW NOW",c.REVIEW_NOW],["REVIEW",c.REVIEW],
+    ["LOW PRIORITY",c.LOW_PRIORITY],["SKIP QUICK",c.SKIP_QUICK],["GMGN KEY",j.configured?"READY":"NOT SET"]
+  ].map(([k,v])=>`<div class="card"><small>${k}</small><strong>${v}</strong></div>`).join("");
+
+  $("#gmgnBody").innerHTML=a.map(x=>{
+    const links=[
+      x.gmgn_url?`<a href="${x.gmgn_url}" target="_blank">GMGN</a>`:"",
+      x.twitter?`<a href="${x.twitter}" target="_blank">X</a>`:"",
+      x.website?`<a href="${x.website}" target="_blank">WEB</a>`:""
+    ].filter(Boolean).join(" · ")||"—";
+    return `<tr>
+      <td><b>${x.symbol||"?"}</b><div class="addr">${x.address}</div></td>
+      <td class="${qcls(x.quick_verdict)}"><b>${x.quick_verdict||"—"}</b></td><td>${num(x.quick_score,0)}</td>
+      <td>${money(x.liquidity_usd)}</td><td>${money(x.market_cap_usd)}</td><td>${x.holder_count??"—"}</td>
+      <td>${x.smart_wallets??"—"}</td><td>${x.kol_wallets??"—"}</td>
+      <td>${pctRatio(x.top10_rate)}</td><td>${pctRatio(x.bundler_rate)}</td><td>${pctRatio(x.rat_rate)}</td><td>${x.dev_status||"—"}</td>
+      <td>${num(x.buy_ratio_5m)}</td><td>${num(x.buy_usd_ratio_5m)}</td><td>${num(x.buy_ratio_1h)}</td><td>${num(x.buy_usd_ratio_1h)}</td>
+      <td>${age(x.age_hours)}</td><td class="reason" title="${(x.quick_reason||"").replaceAll('"','&quot;')}">${x.quick_reason||"—"}</td>
+      <td>${links}</td><td>${x.scanned_at?new Date(x.scanned_at).toLocaleTimeString():"—"}</td>
+    </tr>`;
+  }).join("");
+}
+async function gmgnOne(ev){
+  const address=$("#gmgnAddr").value.trim();if(!address)return;
+  const b=ev.currentTarget;b.disabled=true;b.textContent="GMGN scanning...";
+  try{
+    await api("/api/gmgn/basic",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({address,chain:"solana"})});
+    $("#gmgnAddr").value="";await loadGmgn();
+  }catch(e){alert(e.message)}
+  finally{b.disabled=false;b.textContent="GMGN Scan One"}
+}
+async function gmgnActive(ev){
+  const b=ev.currentTarget;b.disabled=true;b.textContent="Screening...";
+  try{await api("/api/gmgn/screen-active",{method:"POST"});await loadGmgn()}
+  catch(e){alert(e.message)}
+  finally{b.disabled=false;b.textContent="Screen Active Tokens"}
+}
+loadScanner();
+setInterval(()=>{ if(document.visibilityState==="visible") loadCurrent().catch(()=>{}); },30000);
 </script>
-<footer class="footer">Built for <b>@dwiita2026</b></footer>
 </body>
 </html>
