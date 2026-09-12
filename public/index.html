@@ -16,6 +16,7 @@
   .tableWrap{overflow:auto;border:1px solid var(--line);border-radius:10px;max-height:72vh}table{border-collapse:collapse;width:100%;min-width:1600px}th,td{border-bottom:1px solid #17303a;padding:8px 9px;text-align:left;white-space:nowrap}th{position:sticky;top:0;background:#08131a;color:#7ca2b8;font-size:10px}
   .buy,.strong{color:var(--green)}.early{color:var(--purple)}.skip{color:var(--red)}.wait{color:#92a9b6}.bad{color:var(--red)}.ok{color:var(--green)}.muted{color:var(--muted)}
   .reason{max-width:380px;overflow:hidden;text-overflow:ellipsis}.addr{font-size:9px;color:#4e7285}
+.footer{padding:14px 16px;text-align:center;color:var(--muted);border-top:1px solid var(--line);margin-top:12px;font-size:11px}.footer b{color:var(--green)}
 </style>
 </head>
 <body>
@@ -108,5 +109,6 @@ async function del(address){
 load();
 setInterval(load,30000);
 </script>
+<footer class="footer">Built for <b>@dwiita2026</b></footer>
 </body>
 </html>
