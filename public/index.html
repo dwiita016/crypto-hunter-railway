@@ -17,11 +17,20 @@ main{padding:12px}.tabs{display:flex;gap:8px;margin-bottom:12px}.tab{padding:9px
 .footer{padding:14px 16px;text-align:center;color:var(--muted);border-top:1px solid var(--line);margin-top:12px;font-size:11px}.footer b{color:var(--green)}
 a{color:var(--green)}
 @media(max-width:900px){.cards{grid-template-columns:repeat(2,1fr)}header{align-items:flex-start;flex-direction:column}}
+
+.scannerRow{cursor:pointer}.scannerRow:hover{background:#0b1c24}.scannerRow button{cursor:pointer}
+.modalBackdrop{display:none;position:fixed;inset:0;background:#000b;z-index:20;align-items:center;justify-content:center;padding:20px}
+.modalBackdrop.open{display:flex}
+.modal{width:min(1120px,96vw);max-height:88vh;overflow:auto;background:#071219;border:1px solid var(--line);border-radius:12px;box-shadow:0 20px 60px #000;padding:14px}
+.modalHead{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px;position:sticky;top:0;background:#071219;padding-bottom:10px;border-bottom:1px solid var(--line);z-index:2}
+.modalHead h2{margin:0;font-size:16px}.timeline{display:grid;gap:8px}.historyRow{display:grid;grid-template-columns:90px 110px 120px 80px 90px 90px 90px 100px 1fr;gap:8px;align-items:center;padding:9px;border:1px solid #17303a;border-radius:8px;background:#08151c}.historyRow .reason{max-width:none;white-space:normal}.historyHead{color:var(--muted);font-size:10px;background:#061016}.stateArrow{color:var(--muted);padding:2px 0 2px 96px}
+@media(max-width:900px){.historyRow{grid-template-columns:80px 100px 100px 70px 1fr}.historyRow .hideMobile{display:none}}
+
 </style>
 </head>
 <body>
 <header>
-  <div><h1>CRYPTO <b>HUNTER</b> // RAILWAY V2</h1><div class="muted">Live pair validation → multi-scan trajectory → decision</div></div>
+  <div><h1>CRYPTO <b>HUNTER</b> // RAILWAY V2.7</h1><div class="muted">Live pair validation → multi-scan trajectory → decision</div></div>
   <div><button onclick="loadCurrent()">↻ Refresh</button></div>
 </header>
 <main>
@@ -54,7 +63,7 @@ a{color:var(--green)}
   <section id="gmgn" class="view">
     <div class="note">
       <b>GMGN Token Basic Info = quick screening, bukan BUY signal.</b>
-      Tujuannya menyaring token mana yang layak ditinjau ulang sebelum masuk analisis utama.
+      Tujuannya menyaring token mana yang layak ditinjau ulang sebelum masuk analisis utama. REVIEW/REVIEW_NOW mendapat tombol CHECK & ADD. Saat ditekan, GMGN Security dicek otomatis; hanya status SECURE yang boleh masuk Scanner otomatis.
       Data memakai GMGN <code>token info</code>: liquidity, holders, Smart Money/KOL, concentration,
       buy/sell count & USD pressure. Security audit belum termasuk di tab ini.
     </div>
@@ -70,13 +79,36 @@ a{color:var(--green)}
           <th>TOKEN</th><th>VERDICT</th><th>Q.SCORE</th><th>LIQ</th><th>MC</th><th>HOLDERS</th>
           <th>SM</th><th>KOL</th><th>TOP10</th><th>BUNDLER</th><th>RAT</th><th>DEV</th>
           <th>CNT 5M</th><th>USD 5M</th><th>CNT 1H</th><th>USD 1H</th><th>AGE</th>
-          <th>WHY</th><th>LINKS</th><th>SCANNED</th>
+          <th>WHY</th><th>SECURITY</th><th>ACTION</th><th>LINKS</th><th>SCANNED</th>
         </tr></thead>
         <tbody id="gmgnBody"></tbody>
       </table>
     </div>
   </section>
 </main>
+
+<div id="historyModal" class="modalBackdrop" onclick="closeHistoryBackdrop(event)">
+  <div class="modal">
+    <div class="modalHead">
+      <div>
+        <h2 id="historyTitle">Trajectory History</h2>
+        <div id="historyAddress" class="addr"></div>
+      </div>
+      <button onclick="closeHistory()">CLOSE</button>
+    </div>
+    <div id="historySummary" class="cards"></div>
+
+    <div class="note">
+      <b>CALIBRATION</b>
+      <div id="calibrationStatus" style="margin-top:6px">Loading calibration...</div>
+      <div id="calibrationMetrics" style="margin-top:8px"></div>
+      <div id="calibrationFlags" style="margin-top:8px"></div>
+    </div>
+
+    <div id="historyTimeline" class="timeline"></div>
+  </div>
+</div>
+
 <footer class="footer">Built for <b>@dwiita2026</b></footer>
 
 <script>
@@ -87,8 +119,9 @@ const num=(n,d=2)=>n==null?"—":Number(n).toFixed(d);
 const pctRatio=n=>n==null?"—":`${(Number(n)*100).toFixed(1)}%`;
 const pct=n=>n==null?"—":`${Number(n).toFixed(1)}%`;
 const age=n=>n==null?"—":Number(n)<24?`${Number(n).toFixed(1)}h`:`${(Number(n)/24).toFixed(1)}d`;
-const cls=d=>d==="BUY"?"buy":d==="STRONG_WATCH"?"strong":d==="EARLY_WATCH"?"early":d==="SKIP"?"skip":"wait";
+const cls=d=>d==="BUY"?"buy":d==="HOLD"?"strong":d==="RECOVERY"?"buy":d==="STRONG_WATCH"?"strong":d==="EARLY_WATCH"?"early":d==="EXIT_NOW"?"skip":d==="EXIT_WARNING"?"skip":d==="WARNING_PULLBACK"?"early":d==="SKIP"?"skip":"wait";
 const qcls=v=>v==="REVIEW_NOW"?"reviewnow":v==="REVIEW"?"review":v==="ERROR"?"error":v==="SKIP_QUICK"?"skip":"low";
+const securityClass=v=>v==="SECURE"?"ok":v==="BLOCK"?"bad":v==="CAUTION"?"early":"muted";
 
 async function api(url,opt){
   const r=await fetch(url,opt); const j=await r.json();
@@ -103,17 +136,146 @@ function showTab(name){
 }
 function loadCurrent(){ return activeTab==="gmgn"?loadGmgn():loadScanner(); }
 
+
+function historyStateClass(v){
+  return cls(String(v||""));
+}
+
+
+function calibrationClass(status){
+  if(status==="MATCH") return "ok";
+  if(status==="DATA_GAP") return "muted";
+  if(status==="CHECK_VARIANCE") return "early";
+  return "bad";
+}
+
+async function loadCalibration(address){
+  $("#calibrationStatus").innerHTML=`<span class="muted">Loading calibration...</span>`;
+  $("#calibrationMetrics").innerHTML="";
+  $("#calibrationFlags").innerHTML="";
+
+  try{
+    const j=await api(`/api/calibration/${encodeURIComponent(address)}`);
+    const c=j.calibration||{};
+    const r=j.row||{};
+
+    $("#calibrationStatus").innerHTML=
+      `<b class="${calibrationClass(c.status)}">${c.status||"—"}</b>`+
+      ` <span class="muted">(${c.severity||"—"})</span>`;
+
+    const m=c.metrics||{};
+    $("#calibrationMetrics").innerHTML=[
+      ["Scanner LP", money(r.pair_lp_usd)],
+      ["GMGN LP", money(r.gmgn_liquidity_usd)],
+      ["LP Δ", m.lpDiffPct==null?"—":`${Number(m.lpDiffPct).toFixed(0)}%`],
+      ["Scanner MC", money(r.market_cap_usd)],
+      ["GMGN MC", money(r.gmgn_market_cap_usd)],
+      ["MC Δ", m.mcDiffPct==null?"—":`${Number(m.mcDiffPct).toFixed(0)}%`],
+      ["Scanner BR5M", num(r.buy_ratio_5m)],
+      ["GMGN BR5M", num(r.gmgn_buy_ratio_5m)],
+      ["Security", r.security_status||"NOT CHECKED"]
+    ].map(([k,v])=>`<span style="display:inline-block;margin:0 14px 6px 0"><span class="muted">${k}</span> <b>${v}</b></span>`).join("");
+
+    const flags=c.flags||[];
+    $("#calibrationFlags").innerHTML=flags.length
+      ? flags.map(x=>`<div class="${x.severity==="CRITICAL"||x.severity==="HIGH"?"bad":x.severity==="MEDIUM"?"early":"muted"}">• ${x.code}: ${x.message}</div>`).join("")
+      : `<div class="ok">• Scanner dan GMGN cukup konsisten pada metric yang tersedia.</div>`;
+
+  }catch(e){
+    $("#calibrationStatus").innerHTML=`<span class="bad">${e.message}</span>`;
+  }
+}
+
+async function openHistory(address, symbol){
+  const modal=$("#historyModal");
+  modal.classList.add("open");
+  $("#historyTitle").textContent=`${symbol} · TRAJECTORY HISTORY`;
+  $("#historyAddress").textContent=address;
+  $("#historyTimeline").innerHTML=`<div class="muted">Loading history...</div>`;
+  $("#historySummary").innerHTML="";
+  loadCalibration(address).catch(()=>{});
+
+  try{
+    const j=await api(`/api/history/${encodeURIComponent(address)}?limit=20`);
+    const h=j.history||[];
+
+    if(!h.length){
+      $("#historyTimeline").innerHTML=`<div class="note">Belum ada scan history untuk token ini.</div>`;
+      return;
+    }
+
+    const latest=h[0];
+    const oldest=h[h.length-1];
+    const scoreDelta=(latest.score==null||oldest.score==null)?null:Number(latest.score)-Number(oldest.score);
+
+    $("#historySummary").innerHTML=[
+      ["SCANS",h.length],
+      ["CURRENT",latest.decision||"—"],
+      ["TRAJECTORY",latest.trajectory||"—"],
+      ["SCORE Δ",scoreDelta==null?"—":`${scoreDelta>=0?"+":""}${scoreDelta.toFixed(1)}`],
+      ["LP NOW",money(latest.pairLpUsd)],
+      ["LIVE/ALL",latest.tradablePairCount==null?"—":`${latest.tradablePairCount}/${latest.pairCount}`],
+      ["LP vs BUY",latest.lpVsBuy==null?"—":`${(Number(latest.lpVsBuy)*100).toFixed(0)}%`],
+      ["MC vs BUY",latest.mcVsBuy==null?"—":`${(Number(latest.mcVsBuy)*100).toFixed(0)}%`]
+    ].map(([k,v])=>`<div class="card"><small>${k}</small><strong>${v}</strong></div>`).join("");
+
+    const rows=[...h].reverse();
+    let prev=null;
+    const out=[];
+
+    out.push(`
+      <div class="historyRow historyHead">
+        <div>TIME</div><div>DECISION</div><div>TRAJECTORY</div><div>SCORE</div>
+        <div class="hideMobile">LP</div><div class="hideMobile">BR5M</div>
+        <div class="hideMobile">BR1H</div><div class="hideMobile">1H %</div><div>REASON</div>
+      </div>`);
+
+    rows.forEach(x=>{
+      if(prev && prev.decision!==x.decision){
+        out.push(`<div class="stateArrow">↳ ${prev.decision||"—"} → <b class="${historyStateClass(x.decision)}">${x.decision||"—"}</b></div>`);
+      }
+
+      out.push(`
+        <div class="historyRow">
+          <div>${x.scannedAt?new Date(x.scannedAt).toLocaleTimeString():"—"}</div>
+          <div class="${historyStateClass(x.decision)}"><b>${x.decision||"—"}</b></div>
+          <div>${x.trajectory||"—"}</div>
+          <div>${num(x.score)}</div>
+          <div class="hideMobile">${money(x.pairLpUsd)}</div>
+          <div class="hideMobile">${num(x.buyRatio5m)}</div>
+          <div class="hideMobile">${num(x.buyRatio1h)}</div>
+          <div class="hideMobile">${pct(x.priceChange1h)}</div>
+          <div class="reason">${x.reason||"—"}</div>
+        </div>`);
+      prev=x;
+    });
+
+    $("#historyTimeline").innerHTML=out.join("");
+  }catch(e){
+    $("#historyTimeline").innerHTML=`<div class="note bad">${e.message}</div>`;
+  }
+}
+
+function closeHistory(){
+  $("#historyModal").classList.remove("open");
+}
+
+function closeHistoryBackdrop(ev){
+  if(ev.target.id==="historyModal") closeHistory();
+}
+
+
 async function loadScanner(){
   const j=await api("/api/results"); const a=j.results||[];
-  const c={BUY:0,STRONG_WATCH:0,EARLY_WATCH:0,WAIT:0,SKIP:0};
+  const c={BUY:0,HOLD:0,RECOVERY:0,STRONG_WATCH:0,EARLY_WATCH:0,WARNING_PULLBACK:0,EXIT_WARNING:0,EXIT_NOW:0,WAIT:0,SKIP:0};
   a.forEach(x=>c[x.decision]=(c[x.decision]||0)+1);
   $("#cards").innerHTML=[
-    ["TOKENS",a.length],["BUY",c.BUY],["STRONG WATCH",c.STRONG_WATCH],
-    ["EARLY WATCH",c.EARLY_WATCH],["WAIT",c.WAIT],["SKIP",c.SKIP]
+    ["TOKENS",a.length],["BUY",c.BUY],["HOLD",c.HOLD],["STRONG WATCH",c.STRONG_WATCH],
+    ["PULLBACK",c.WARNING_PULLBACK],["EXIT",c.EXIT_WARNING+c.EXIT_NOW]
   ].map(([k,v])=>`<div class="card"><small>${k}</small><strong>${v}</strong></div>`).join("");
 
   $("#body").innerHTML=a.map(x=>`
-    <tr>
+    <tr class="scannerRow" onclick="openHistory('${x.address}','${(x.symbol||"?").replaceAll("'","")}')">
       <td><b>${x.symbol||"?"}</b><div class="addr">${x.address}</div></td>
       <td>${money(x.pair_lp_usd)}</td><td>${money(x.total_lp_usd)}</td>
       <td class="${x.tradable_pair_count>0?"ok":"bad"}">${x.tradable_pair_count}/${x.pair_count}</td>
@@ -124,7 +286,7 @@ async function loadScanner(){
       <td class="${cls(x.decision)}">${x.signal||"—"}</td>
       <td class="reason" title="${(x.reason||"").replaceAll('"','&quot;')}">${x.reason||"—"}</td>
       <td>${x.scanned_at?new Date(x.scanned_at).toLocaleTimeString():"—"}</td>
-      <td><button onclick="delToken('${x.address}')">DELETE</button></td>
+      <td><button onclick="event.stopPropagation();delToken('${x.address}')">DELETE</button></td>
     </tr>`).join("");
 }
 
@@ -144,6 +306,71 @@ async function scanAll(ev){
 async function delToken(address){
   if(!confirm("Disable token from active scan?"))return;
   await api(`/api/tokens/${encodeURIComponent(address)}`,{method:"DELETE"}); await loadScanner();
+}
+
+function gmgnAction(x){
+  const verdict=String(x.quick_verdict||"");
+  const allowed=verdict==="REVIEW_NOW"||verdict==="REVIEW";
+  if(!allowed) return `<span class="muted">NOT ELIGIBLE</span>`;
+  return `<button class="primary" onclick="checkAddScanner('${x.address}', event)">CHECK & ADD</button>`;
+}
+
+async function checkAddScanner(address, ev){
+  const b=ev.currentTarget;
+  const old=b.textContent;
+  b.disabled=true;
+  b.textContent="Checking...";
+
+  try{
+    const j=await api("/api/gmgn/check-add",{
+      method:"POST",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({address,chain:"solana"})
+    });
+
+    await loadGmgn();
+
+    if(j.added){
+      alert(
+        `${j.gmgn.symbol||address}
+
+`+
+        `Basic Info: ${j.gmgn.quickVerdict}
+`+
+        `Security: ${j.security?.securityStatus||"—"}
+`+
+        `Scanner: ${j.scanner.decision}
+
+`+
+        `Lolos gate dan sudah masuk tab SCANNER.`
+      );
+    }else{
+      const sec=j.security
+        ? `
+Security: ${j.security.securityStatus}
+${j.security.securityReason}
+`
+        : "";
+      alert(
+        `${j.gmgn.symbol||address}
+
+`+
+        `Basic Info: ${j.gmgn.quickVerdict}
+`+
+        sec+
+        `
+${j.reason}
+
+`+
+        `Token TIDAK dimasukkan ke Scanner.`
+      );
+    }
+  }catch(e){
+    alert(e.message);
+  }finally{
+    b.disabled=false;
+    b.textContent=old;
+  }
 }
 
 async function loadGmgn(){
@@ -169,6 +396,8 @@ async function loadGmgn(){
       <td>${pctRatio(x.top10_rate)}</td><td>${pctRatio(x.bundler_rate)}</td><td>${pctRatio(x.rat_rate)}</td><td>${x.dev_status||"—"}</td>
       <td>${num(x.buy_ratio_5m)}</td><td>${num(x.buy_usd_ratio_5m)}</td><td>${num(x.buy_ratio_1h)}</td><td>${num(x.buy_usd_ratio_1h)}</td>
       <td>${age(x.age_hours)}</td><td class="reason" title="${(x.quick_reason||"").replaceAll('"','&quot;')}">${x.quick_reason||"—"}</td>
+      <td class="${securityClass(x.security_status)}" title="${(x.security_reason||"").replaceAll('"','&quot;')}">${x.security_status||"NOT CHECKED"}</td>
+      <td>${gmgnAction(x)}</td>
       <td>${links}</td><td>${x.scanned_at?new Date(x.scanned_at).toLocaleTimeString():"—"}</td>
     </tr>`;
   }).join("");

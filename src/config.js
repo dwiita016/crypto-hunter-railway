@@ -5,5 +5,7 @@ export const config = {
   minTradableLpUsd: Number(process.env.MIN_TRADABLE_LP_USD || 5000),
   youngPairHours: Number(process.env.YOUNG_PAIR_HOURS || 6),
   requestTimeoutMs: Number(process.env.REQUEST_TIMEOUT_MS || 12000),
-  gmgnApiKey: String(process.env.GMGN_API_KEY || "").trim()
+  gmgnApiKey: String(process.env.GMGN_API_KEY || "").trim(),
+  telegramBotToken: String(process.env.TELEGRAM_BOT_TOKEN || "").trim(),
+  telegramChatId: String(process.env.TELEGRAM_CHAT_ID || "").trim()
 };

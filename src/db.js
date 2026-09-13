@@ -103,6 +103,11 @@ export async function initDb() {
       raw JSONB,
       scanned_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+
+    ALTER TABLE gmgn_basic ADD COLUMN IF NOT EXISTS security_status TEXT;
+    ALTER TABLE gmgn_basic ADD COLUMN IF NOT EXISTS security_reason TEXT;
+    ALTER TABLE gmgn_basic ADD COLUMN IF NOT EXISTS security_checked_at TIMESTAMPTZ;
+    ALTER TABLE gmgn_basic ADD COLUMN IF NOT EXISTS security_raw JSONB;
   `);
 }
 
@@ -151,6 +156,106 @@ export async function getHistory(address, limit = 4) {
     LIMIT $2
   `, [address, n]);
   return rows;
+}
+
+
+export async function getPublicHistory(address, limit = 20) {
+  const n = Math.max(1, Math.min(100, Number(limit) || 20));
+
+  const { rows } = await pool.query(`
+    SELECT
+      id,
+      address,
+      chain,
+      decision,
+      signal,
+      pair_address,
+      pair_lp_usd,
+      market_cap_usd,
+      volume_24h_usd,
+      score,
+      snapshot,
+      scanned_at
+    FROM scan_history
+    WHERE address = $1
+    ORDER BY scanned_at DESC
+    LIMIT $2
+  `, [address, n]);
+
+  return rows.map(row => {
+    const s = row.snapshot || {};
+    return {
+      id: row.id,
+      address: row.address,
+      chain: row.chain,
+      symbol: s.symbol || null,
+      decision: row.decision || s.decision || null,
+      entryState: s.entryState || null,
+      trajectory: s.trajectory || null,
+      signal: row.signal || s.signal || null,
+      risk: s.risk || null,
+      reason: s.reason || null,
+      score: row.score,
+      pairLpUsd: row.pair_lp_usd,
+      marketCapUsd: row.market_cap_usd,
+      volume24hUsd: row.volume_24h_usd,
+      buyRatio5m: s.buyRatio5m ?? null,
+      buyRatio1h: s.buyRatio1h ?? null,
+      priceChange5m: s.priceChange5m ?? null,
+      priceChange1h: s.priceChange1h ?? null,
+      tradablePairCount: s.tradablePairCount ?? null,
+      pairCount: s.pairCount ?? null,
+      postEntryActive: s.postEntryActive === true,
+      lpVsBuy: s.postEntryMetrics?.lpVsBuy ?? null,
+      mcVsBuy: s.postEntryMetrics?.mcVsBuy ?? null,
+      scannedAt: row.scanned_at
+    };
+  });
+}
+
+
+export async function getCalibration(address) {
+  const { rows } = await pool.query(`
+    SELECT
+      r.address,
+      r.symbol AS scanner_symbol,
+      r.pair_lp_usd,
+      r.market_cap_usd,
+      r.buy_ratio_5m,
+      r.buy_ratio_1h,
+      r.score,
+      r.risk,
+      r.entry_state,
+      r.trajectory,
+      r.signal,
+      r.decision,
+      r.reason,
+      r.scanned_at AS scanner_scanned_at,
+
+      g.symbol AS gmgn_symbol,
+      g.liquidity_usd AS gmgn_liquidity_usd,
+      g.market_cap_usd AS gmgn_market_cap_usd,
+      g.buy_ratio_5m AS gmgn_buy_ratio_5m,
+      g.buy_ratio_1h AS gmgn_buy_ratio_1h,
+      g.buy_usd_ratio_5m AS gmgn_buy_usd_ratio_5m,
+      g.buy_usd_ratio_1h AS gmgn_buy_usd_ratio_1h,
+      g.holder_count,
+      g.smart_wallets,
+      g.kol_wallets,
+      g.quick_score,
+      g.quick_verdict,
+      g.quick_reason,
+      g.security_status,
+      g.security_reason,
+      g.scanned_at AS gmgn_scanned_at
+    FROM scan_results r
+    LEFT JOIN gmgn_basic g
+      ON g.address = r.address
+    WHERE r.address = $1
+    LIMIT 1
+  `, [address]);
+
+  return rows[0] || null;
 }
 
 export async function saveResult(result) {
@@ -277,6 +382,24 @@ export async function saveGmgnBasic(x) {
     x.volume5mUsd, x.volume1hUsd, x.ageHours,
     x.quickScore, x.quickVerdict, x.quickReason,
     x.twitter, x.website, x.telegram, x.gmgnUrl, x.raw
+  ]);
+}
+
+
+export async function saveGmgnSecurity(address, security) {
+  await pool.query(`
+    UPDATE gmgn_basic
+    SET
+      security_status = $2,
+      security_reason = $3,
+      security_checked_at = NOW(),
+      security_raw = $4
+    WHERE address = $1
+  `, [
+    address,
+    security.securityStatus,
+    security.securityReason,
+    security.raw
   ]);
 }
 

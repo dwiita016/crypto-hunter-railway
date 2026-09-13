@@ -5,6 +5,8 @@ import {
 } from "./providers/dexscreener.js";
 import { saveResult, getHistory } from "./db.js";
 import { applyTrajectory } from "./trajectory.js";
+import { sendStateChangeAlert } from "./notifier.js";
+import { applyPostEntryMonitor } from "./post-entry.js";
 
 function clamp(x, lo, hi) {
   return Math.max(lo, Math.min(hi, x));
@@ -106,7 +108,19 @@ export async function scanToken(address, chain = "solana", { persist = true } = 
   const score = scoreCoin(c);
   const base = classify({ ...c, score });
   const history = persist ? await getHistory(address, 4) : [];
-  const cls = applyTrajectory({ ...c, score }, base, history);
+  const trajectoryClass =
+    applyTrajectory(
+      { ...c, score },
+      base,
+      history
+    );
+
+  const cls =
+    applyPostEntryMonitor(
+      { ...c, score },
+      trajectoryClass,
+      history
+    );
 
   const result = {
     ...c,
@@ -123,6 +137,24 @@ export async function scanToken(address, chain = "solana", { persist = true } = 
 
   delete result.rawPair;
 
-  if (persist) await saveResult(result);
+  if (persist) {
+    await saveResult(result);
+
+    try {
+      result.telegram = await sendStateChangeAlert(result, history);
+    } catch (err) {
+      // Trading/scanning must not fail only because Telegram is unavailable.
+      console.error(
+        `[TELEGRAM] ${result.symbol || address} alert failed:`,
+        err?.message || err
+      );
+      result.telegram = {
+        sent: false,
+        reason: "TELEGRAM_SEND_FAILED",
+        error: err?.message || String(err)
+      };
+    }
+  }
+
   return result;
 }

@@ -181,3 +181,149 @@ export async function fetchGmgnBasic(address, chain = "solana") {
     quickReason: q.reason
   };
 }
+
+function asBool(v) {
+  if (typeof v === "boolean") return v;
+  const s = String(v ?? "").trim().toLowerCase();
+  if (["true", "1", "yes"].includes(s)) return true;
+  if (["false", "0", "no"].includes(s)) return false;
+  return null;
+}
+
+function securityVerdict(x) {
+  const hard = [];
+  const cautions = [];
+  const chain = String(x.chain || "").toLowerCase();
+
+  if (["bsc", "base"].includes(chain) && x.isHoneypot === true) {
+    hard.push("HONEYPOT");
+  }
+  if (x.rugRatio !== null && x.rugRatio > 0.30) {
+    hard.push(`RUG_RATIO>${(x.rugRatio * 100).toFixed(0)}%`);
+  }
+  if (x.sellTax !== null && x.sellTax > 0.10) {
+    hard.push(`SELL_TAX>${(x.sellTax * 100).toFixed(0)}%`);
+  }
+  if (x.top10HolderRate !== null && x.top10HolderRate > 0.60) {
+    hard.push(`TOP10>${(x.top10HolderRate * 100).toFixed(0)}%`);
+  }
+
+  // Strict automatic-entry gate for Solana.
+  if (chain === "sol") {
+    if (x.renouncedMint === false) hard.push("MINT_AUTHORITY_ACTIVE");
+    if (x.renouncedFreeze === false) hard.push("FREEZE_AUTHORITY_ACTIVE");
+  }
+
+  if (x.isWashTrading === true) cautions.push("WASH_TRADING");
+  if (x.creatorTokenStatus === "creator_hold") cautions.push("CREATOR_STILL_HOLDS");
+  if (x.devTeamHoldRate !== null && x.devTeamHoldRate > 0.20) cautions.push("DEV_TEAM>20%");
+  if (x.creatorBalanceRate !== null && x.creatorBalanceRate > 0.10) cautions.push("CREATOR>10%");
+  if (x.suspectedInsiderHoldRate !== null && x.suspectedInsiderHoldRate > 0.20) cautions.push("INSIDER>20%");
+  if (x.bundlerTraderAmountRate !== null && x.bundlerTraderAmountRate > 0.30) cautions.push("BUNDLER>30%");
+  if (x.ratTraderAmountRate !== null && x.ratTraderAmountRate > 0.30) cautions.push("RAT_TRADER>30%");
+  if (x.sniperCount !== null && x.sniperCount >= 5) cautions.push("SNIPERS>=5");
+
+  if (hard.length) {
+    return {
+      status: "BLOCK",
+      autoAddAllowed: false,
+      reason: hard.join(" · "),
+      warnings: cautions
+    };
+  }
+
+  if (cautions.length) {
+    return {
+      status: "CAUTION",
+      autoAddAllowed: false,
+      reason: cautions.join(" · "),
+      warnings: cautions
+    };
+  }
+
+  return {
+    status: "SECURE",
+    autoAddAllowed: true,
+    reason: "Tidak ada hard-stop / warning security GMGN yang terdeteksi.",
+    warnings: []
+  };
+}
+
+export async function fetchGmgnSecurity(address, chain = "solana") {
+  if (!config.gmgnApiKey) {
+    throw new Error("GMGN_API_KEY belum di-set di Railway Variables.");
+  }
+
+  const gmgnChain = chainForGmgn(chain);
+  const bin = path.resolve(__dirname, "../../node_modules/.bin/gmgn-cli");
+  const args = [
+    "token", "security",
+    "--chain", gmgnChain,
+    "--address", String(address),
+    "--raw"
+  ];
+
+  let stdout;
+  try {
+    ({ stdout } = await execFileAsync(bin, args, {
+      env: { ...process.env, GMGN_API_KEY: config.gmgnApiKey },
+      timeout: 30000,
+      maxBuffer: 2 * 1024 * 1024
+    }));
+  } catch (err) {
+    const detail = String(err?.stderr || err?.message || err);
+
+    if (/\b(401|403)\b/.test(detail)) {
+      throw new Error(
+        "GMGN Security 401/403. Cek GMGN_API_KEY; jika key benar, cek outbound IPv4/IPv6 Railway."
+      );
+    }
+    if (/\b429\b/.test(detail)) {
+      throw new Error(
+        "GMGN Security rate limit (429). Tunggu cooldown GMGN; jangan retry berulang."
+      );
+    }
+
+    throw new Error(`GMGN token security gagal: ${detail.slice(0, 500)}`);
+  }
+
+  const d = parseRaw(stdout);
+
+  const x = {
+    address: String(address),
+    chain: gmgnChain,
+    isHoneypot: asBool(d.is_honeypot),
+    openSource: String(d.open_source ?? "unknown"),
+    ownerRenounced: String(d.owner_renounced ?? "unknown"),
+    renouncedMint: asBool(d.renounced_mint),
+    renouncedFreeze: asBool(d.renounced_freeze_account),
+    buyTax: nullable(d.buy_tax),
+    sellTax: nullable(d.sell_tax),
+    top10HolderRate: nullable(d.top_10_holder_rate),
+    devTeamHoldRate: nullable(d.dev_team_hold_rate),
+    creatorBalanceRate: nullable(d.creator_balance_rate),
+    creatorTokenStatus: String(d.creator_token_status ?? ""),
+    suspectedInsiderHoldRate: nullable(d.suspected_insider_hold_rate),
+    rugRatio: nullable(d.rug_ratio),
+    isWashTrading: asBool(d.is_wash_trading),
+    ratTraderAmountRate: nullable(d.rat_trader_amount_rate),
+    bundlerTraderAmountRate: nullable(d.bundler_trader_amount_rate),
+    sniperCount:
+      d.sniper_count === null || d.sniper_count === undefined
+        ? null
+        : Math.round(n(d.sniper_count)),
+    burnStatus: String(d.burn_status ?? ""),
+    raw: d
+  };
+
+  const verdict = securityVerdict(x);
+
+  return {
+    ...x,
+    securityStatus: verdict.status,
+    securityAutoAddAllowed: verdict.autoAddAllowed,
+    securityReason: verdict.reason,
+    securityWarnings: verdict.warnings
+  };
+}
+
