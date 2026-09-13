@@ -231,3 +231,23 @@ Penting:
 V2.7 hanya **mengobservasi dan menandai gap**.
 Calibration belum mengubah Score/BUY/EXIT threshold secara otomatis.
 Tujuannya mengumpulkan benchmark terlebih dahulu sebelum tuning V2.8.
+
+
+## V2.8 — Visual Refresh
+
+Logic trading/scoring tidak diubah.
+
+Visual refresh:
+- premium dark terminal palette
+- clearer hierarchy and card accents
+- BUY/HOLD/RECOVERY = green
+- STRONG WATCH = cyan
+- EARLY WATCH = purple
+- WAIT / pullback = yellow
+- EXIT WARNING = orange
+- EXIT NOW / SKIP = red
+- score gradient styling
+- LOW/MEDIUM/HIGH risk colors
+- stronger hover state for clickable scanner rows
+- updated modal styling
+- footer/signature retained
