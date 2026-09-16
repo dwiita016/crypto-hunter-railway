@@ -7,5 +7,6 @@ export const config = {
   requestTimeoutMs: Number(process.env.REQUEST_TIMEOUT_MS || 12000),
   gmgnApiKey: String(process.env.GMGN_API_KEY || "").trim(),
   telegramBotToken: String(process.env.TELEGRAM_BOT_TOKEN || "").trim(),
-  telegramChatId: String(process.env.TELEGRAM_CHAT_ID || "").trim()
+  telegramChatId: String(process.env.TELEGRAM_CHAT_ID || "").trim(),
+  strongWatchRecheckSeconds: Number(process.env.STRONG_WATCH_RECHECK_SECONDS || 120)
 };

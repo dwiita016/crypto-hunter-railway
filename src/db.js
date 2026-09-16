@@ -71,6 +71,14 @@ export async function initDb() {
     CREATE INDEX IF NOT EXISTS idx_scan_history_address_time
       ON scan_history(address, scanned_at DESC);
 
+    CREATE TABLE IF NOT EXISTS telegram_state (
+      address TEXT PRIMARY KEY,
+      last_sent_state TEXT,
+      last_sent_at TIMESTAMPTZ,
+      last_message_id BIGINT,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
     CREATE TABLE IF NOT EXISTS gmgn_basic (
       address TEXT PRIMARY KEY,
       chain TEXT NOT NULL,
@@ -323,6 +331,37 @@ export async function saveResult(result) {
     r.address, r.chain, r.decision, r.signal, r.pairAddress,
     r.pairLpUsd, r.marketCapUsd, r.volume24hUsd, r.score, r
   ]);
+}
+
+
+export async function getTelegramState(address) {
+  const { rows } = await pool.query(`
+    SELECT address, last_sent_state, last_sent_at, last_message_id
+    FROM telegram_state
+    WHERE address = $1
+    LIMIT 1
+  `, [address]);
+
+  return rows[0] || null;
+}
+
+export async function markTelegramState(address, state, messageId = null) {
+  await pool.query(`
+    INSERT INTO telegram_state(
+      address,
+      last_sent_state,
+      last_sent_at,
+      last_message_id,
+      updated_at
+    )
+    VALUES($1,$2,NOW(),$3,NOW())
+    ON CONFLICT(address)
+    DO UPDATE SET
+      last_sent_state = EXCLUDED.last_sent_state,
+      last_sent_at = NOW(),
+      last_message_id = EXCLUDED.last_message_id,
+      updated_at = NOW()
+  `, [address, state, messageId]);
 }
 
 export async function getResults() {

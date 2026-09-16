@@ -251,3 +251,56 @@ Visual refresh:
 - stronger hover state for clickable scanner rows
 - updated modal styling
 - footer/signature retained
+
+
+## V2.9 — Telegram BUY Delivery Fix
+
+Masalah:
+Telegram sebelumnya membandingkan state sekarang dengan scan sebelumnya.
+Kalau BUY sudah tersimpan tetapi run tersebut tidak berhasil mengirim Telegram,
+scan berikutnya melihat BUY -> BUY dan menganggap alert tidak perlu dikirim lagi.
+
+Fix:
+- PostgreSQL table baru `telegram_state`
+- suppression berdasarkan **last successfully delivered state**
+- BUY akan terus eligible untuk alert sampai BUY benar-benar berhasil terkirim
+- state baru dicatat setelah Telegram API mengembalikan success
+- Telegram failure tidak menggagalkan scanner
+
+Contoh:
+- STRONG_WATCH terkirim → latch = STRONG_WATCH
+- BUY terjadi, Telegram error → latch tetap STRONG_WATCH
+- scan berikut BUY lagi → Telegram mencoba BUY lagi
+- BUY berhasil → latch = BUY
+- scan BUY berikutnya → suppressed sebagai already delivered
+
+Tidak ada variable Railway baru.
+
+
+## V3.0 — Fast STRONG_WATCH Confirmation
+
+Problem:
+STRONG_WATCH previously had to wait until the next 5-minute cron run before BUY could confirm.
+
+Fix:
+- regular cron remains every 5 minutes
+- if a token becomes `STRONG_WATCH`, the same cron run keeps running
+- after 120 seconds, only STRONG_WATCH tokens are scanned again
+- BUY can confirm on that second strong scan
+
+Flow:
+`STRONG_WATCH -> wait 2 min -> FAST_CONFIRM -> BUY or remain STRONG_WATCH`
+
+BUY is now 2-scan confirmation:
+- current score >= 80
+- BR 5M >= 1.50
+- BR 1H >= 1.30
+- previous decision = STRONG_WATCH
+- no extreme MC jump
+
+This does NOT make BUY instant from one snapshot.
+
+Optional Railway variable:
+`STRONG_WATCH_RECHECK_SECONDS=120`
+
+Default is 120 seconds if the variable is not set.

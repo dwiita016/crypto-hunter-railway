@@ -73,13 +73,13 @@ export function applyTrajectory(current, base, history = []) {
     (lpRatio === null || lpRatio >= 0.90);
 
   if (strongNow && ["EARLY_WATCH", "STRONG_WATCH"].includes(prevDecision)) {
-    // BUY needs two prior confirmations; one spike is not enough.
+    // V3.0: BUY can confirm on the next strong scan after STRONG_WATCH.
+    // This is still 2-scan confirmation, not an instant BUY from one snapshot.
     if (
       current.score >= 80 &&
       br5 >= 1.50 &&
       br1 >= 1.30 &&
       prevDecision === "STRONG_WATCH" &&
-      prev2Decision === "STRONG_WATCH" &&
       (mcRatio === null || mcRatio < 1.80)
     ) {
       return {
@@ -87,9 +87,9 @@ export function applyTrajectory(current, base, history = []) {
         risk: "LOW",
         entryState: "BUY",
         trajectory: "RECOVERY_CONFIRMED",
-        signal: "BUY_CONFIRMED_3_SCAN",
+        signal: "BUY_CONFIRMED_2_SCAN",
         decision: "BUY",
-        reason: "Momentum kuat terkonfirmasi pada 3 scan; LP tetap sehat dan tidak terlihat lonjakan MC ekstrem."
+        reason: "Momentum kuat terkonfirmasi pada 2 scan; LP tetap sehat dan tidak terlihat lonjakan MC ekstrem."
       };
     }
 

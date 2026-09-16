@@ -3,7 +3,7 @@ import {
   selectCanonicalPair,
   normalizePair
 } from "./providers/dexscreener.js";
-import { saveResult, getHistory } from "./db.js";
+import { saveResult, getHistory, getTelegramState, markTelegramState } from "./db.js";
 import { applyTrajectory } from "./trajectory.js";
 import { sendStateChangeAlert } from "./notifier.js";
 import { applyPostEntryMonitor } from "./post-entry.js";
@@ -141,7 +141,26 @@ export async function scanToken(address, chain = "solana", { persist = true } = 
     await saveResult(result);
 
     try {
-      result.telegram = await sendStateChangeAlert(result, history);
+      const telegramState =
+        await getTelegramState(address);
+
+      result.telegram =
+        await sendStateChangeAlert(
+          result,
+          history,
+          telegramState?.last_sent_state || null
+        );
+
+      if (
+        result.telegram?.sent === true &&
+        result.telegram?.deliveredState
+      ) {
+        await markTelegramState(
+          address,
+          result.telegram.deliveredState,
+          result.telegram.messageId || null
+        );
+      }
     } catch (err) {
       // Trading/scanning must not fail only because Telegram is unavailable.
       console.error(

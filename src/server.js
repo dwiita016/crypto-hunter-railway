@@ -246,5 +246,5 @@ app.use((err, _req, res, _next) => {
 await initDb();
 
 app.listen(config.port, "0.0.0.0", () => {
-  console.log(`Crypto Hunter Railway V2.7 listening on ${config.port}`);
+  console.log(`Crypto Hunter Railway V3.0 listening on ${config.port}`);
 });
