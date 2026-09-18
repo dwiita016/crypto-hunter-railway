@@ -211,43 +211,34 @@ function shouldAlert(
 
     return {
       send: false,
-      reason:
-        "TELEGRAM_NOT_CONFIGURED"
+      reason: "TELEGRAM_NOT_CONFIGURED"
     };
   }
 
 
   const current =
-    stateOf(
-      result
-    );
+    stateOf(result);
 
 
   const previous =
-    previousScanState(
-      history
-    );
+    previousScanState(history);
 
 
   const lastSent =
     String(
-      sentState ||
-      ""
+      sentState || ""
     )
       .trim()
       .toUpperCase();
 
 
   if (
-    !ALERT_STATES.has(
-      current
-    )
+    !ALERT_STATES.has(current)
   ) {
 
     return {
       send: false,
-      reason:
-        "STATE_NOT_ALERTABLE",
+      reason: "STATE_NOT_ALERTABLE",
       current,
       previous,
       lastSent
@@ -256,38 +247,16 @@ function shouldAlert(
 
 
   /*
-   * Same state is suppressed only when it was ACTUALLY
-   * delivered successfully before.
-   */
-  if (
-    current ===
-    lastSent
-  ) {
-
-    return {
-      send: false,
-      reason:
-        "STATE_ALREADY_DELIVERED",
-      current,
-      previous,
-      lastSent
-    };
-  }
-
-
-  /*
-   * Avoid spam for a token whose first ever scan = SKIP.
+   * Jangan spam SKIP saat token baru pertama discan.
    */
   if (
     !previous &&
-    current ===
-      "SKIP"
+    current === "SKIP"
   ) {
 
     return {
       send: false,
-      reason:
-        "FIRST_SCAN_SKIP_SUPPRESSED",
+      reason: "FIRST_SCAN_SKIP_SUPPRESSED",
       current,
       previous,
       lastSent
@@ -295,17 +264,105 @@ function shouldAlert(
   }
 
 
+  /*
+   * =====================================================
+   * CASE 1
+   * STATE BERUBAH
+   *
+   * Ini episode baru.
+   * Selalu kirim alert.
+   *
+   * Contoh:
+   *
+   * WAIT -> STRONG_WATCH
+   * STRONG_WATCH -> BUY
+   * BUY -> WAIT -> BUY
+   * WAIT -> STRONG_WATCH
+   * =====================================================
+   */
+
+  if (
+    previous &&
+    current !== previous
+  ) {
+
+    return {
+
+      send: true,
+
+      reason:
+        current === "BUY"
+          ? "BUY_STATE_TRANSITION"
+          : "STATE_TRANSITION",
+
+      current,
+      previous,
+      lastSent
+
+    };
+  }
+
+
+  /*
+   * =====================================================
+   * CASE 2
+   * STATE MASIH SAMA
+   *
+   * Tapi Telegram sebelumnya BELUM berhasil kirim.
+   *
+   * Maka retry.
+   *
+   * Contoh:
+   *
+   * STRONG_WATCH
+   * Telegram error
+   *
+   * 2 menit kemudian:
+   * STRONG_WATCH lagi
+   *
+   * Karena lastSent != STRONG_WATCH
+   * maka kirim ulang.
+   * =====================================================
+   */
+
+  if (
+    current !== lastSent
+  ) {
+
+    return {
+
+      send: true,
+
+      reason:
+        current === "BUY"
+          ? "BUY_DELIVERY_RETRY"
+          : "STATE_DELIVERY_RETRY",
+
+      current,
+      previous,
+      lastSent
+
+    };
+  }
+
+
+  /*
+   * =====================================================
+   * CASE 3
+   *
+   * State sama
+   * dan sudah sukses dikirim.
+   *
+   * Jangan spam Telegram.
+   * =====================================================
+   */
+
   return {
 
-    send: true,
+    send: false,
 
     reason:
-      current ===
-      "BUY"
-
-        ? "BUY_NOT_YET_DELIVERED"
-
-        : "STATE_NOT_YET_DELIVERED",
+      "STATE_ALREADY_DELIVERED_THIS_EPISODE",
 
     current,
     previous,
