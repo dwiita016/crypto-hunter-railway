@@ -160,6 +160,13 @@ export async function scanToken(address, chain = "solana", { persist = true } = 
           result.telegram.deliveredState,
           result.telegram.messageId || null
         );
+        console.log(
+  `[TELEGRAM] ${result.symbol || address} ` +
+  `previous=${history?.[0]?.decision || "NONE"} ` +
+  `current=${result.decision} ` +
+  `sent=${result.telegram?.sent === true} ` +
+  `reason=${result.telegram?.reason || "UNKNOWN"}`
+);
       }
     } catch (err) {
       // Trading/scanning must not fail only because Telegram is unavailable.
