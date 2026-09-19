@@ -3,18 +3,8 @@ import { config } from "./config.js";
 
 const ALERT_STATES =
   new Set([
-    "EARLY_WATCH",
     "STRONG_WATCH",
     "BUY",
-
-    "HOLD",
-    "RECOVERY",
-
-    "WARNING_PULLBACK",
-    "EXIT_WARNING",
-    "EXIT_NOW",
-
-    "SKIP"
   ]);
 
 
@@ -203,39 +193,33 @@ function shouldAlert(
   history,
   sentState = null
 ) {
-
   if (
     !config.telegramBotToken ||
     !config.telegramChatId
   ) {
-
     return {
       send: false,
       reason: "TELEGRAM_NOT_CONFIGURED"
     };
   }
 
-
   const current =
     stateOf(result);
-
 
   const previous =
     previousScanState(history);
 
-
   const lastSent =
-    String(
-      sentState || ""
-    )
+    String(sentState || "")
       .trim()
       .toUpperCase();
 
-
+  /*
+   * Hanya alert entry states.
+   */
   if (
     !ALERT_STATES.has(current)
   ) {
-
     return {
       send: false,
       reason: "STATE_NOT_ALERTABLE",
@@ -245,129 +229,70 @@ function shouldAlert(
     };
   }
 
-
   /*
-   * Jangan spam SKIP saat token baru pertama discan.
-   */
-  if (
-    !previous &&
-    current === "SKIP"
-  ) {
-
-    return {
-      send: false,
-      reason: "FIRST_SCAN_SKIP_SUPPRESSED",
-      current,
-      previous,
-      lastSent
-    };
-  }
-
-
-  /*
-   * =====================================================
-   * CASE 1
-   * STATE BERUBAH
-   *
-   * Ini episode baru.
-   * Selalu kirim alert.
-   *
-   * Contoh:
-   *
+   * STRONG_WATCH hanya kirim kalau berasal dari:
+   * EARLY_WATCH -> STRONG_WATCH
    * WAIT -> STRONG_WATCH
-   * STRONG_WATCH -> BUY
-   * BUY -> WAIT -> BUY
-   * WAIT -> STRONG_WATCH
-   * =====================================================
    */
-
   if (
-    previous &&
-    current !== previous
+    current === "STRONG_WATCH"
   ) {
+    const allowedTransition =
+      previous === "EARLY_WATCH" ||
+      previous === "WAIT";
+
+    if (!allowedTransition) {
+      return {
+        send: false,
+        reason: "STRONG_WATCH_TRANSITION_NOT_REQUIRED",
+        current,
+        previous,
+        lastSent
+      };
+    }
 
     return {
-
       send: true,
-
-      reason:
-        current === "BUY"
-          ? "BUY_STATE_TRANSITION"
-          : "STATE_TRANSITION",
-
+      reason: "STRONG_WATCH_ENTRY_TRANSITION",
       current,
       previous,
       lastSent
-
     };
   }
 
-
   /*
-   * =====================================================
-   * CASE 2
-   * STATE MASIH SAMA
-   *
-   * Tapi Telegram sebelumnya BELUM berhasil kirim.
-   *
-   * Maka retry.
-   *
-   * Contoh:
-   *
-   * STRONG_WATCH
-   * Telegram error
-   *
-   * 2 menit kemudian:
-   * STRONG_WATCH lagi
-   *
-   * Karena lastSent != STRONG_WATCH
-   * maka kirim ulang.
-   * =====================================================
+   * BUY hanya kirim dari STRONG_WATCH.
    */
-
   if (
-    current !== lastSent
+    current === "BUY"
   ) {
+    if (
+      previous !== "STRONG_WATCH"
+    ) {
+      return {
+        send: false,
+        reason: "BUY_TRANSITION_NOT_REQUIRED",
+        current,
+        previous,
+        lastSent
+      };
+    }
 
     return {
-
       send: true,
-
-      reason:
-        current === "BUY"
-          ? "BUY_DELIVERY_RETRY"
-          : "STATE_DELIVERY_RETRY",
-
+      reason: "BUY_STATE_TRANSITION",
       current,
       previous,
       lastSent
-
     };
   }
-
-
-  /*
-   * =====================================================
-   * CASE 3
-   *
-   * State sama
-   * dan sudah sukses dikirim.
-   *
-   * Jangan spam Telegram.
-   * =====================================================
-   */
 
   return {
-
     send: false,
-
-    reason:
-      "STATE_ALREADY_DELIVERED_THIS_EPISODE",
-
+    reason: "NO_ALERT",
     current,
     previous,
     lastSent
-
   };
 }
 
