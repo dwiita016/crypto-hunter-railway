@@ -304,3 +304,6 @@ Optional Railway variable:
 `STRONG_WATCH_RECHECK_SECONDS=120`
 
 Default is 120 seconds if the variable is not set.
+
+## AUTO BUY SIM (Beta)
+Paper-trading tab added without changing the Scanner/GMGN flow. Select scanner candidates, set SOL/token, TP, SL, and optional bad-signal exit. Entry/current prices are refreshed from GMGN Token Info. Simulation state is stored in browser localStorage and does not send wallet transactions.

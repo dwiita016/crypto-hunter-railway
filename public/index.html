@@ -394,6 +394,22 @@ a:hover{text-decoration:underline}
   .historyRow{grid-template-columns:80px 100px 100px 70px 1fr}
   .historyRow .hideMobile{display:none}
 }
+
+
+/* AUTO BUY SIM — paper trading only */
+.simGrid{display:grid;grid-template-columns:1.05fr 1.35fr;gap:10px;margin-bottom:12px}
+.simPanel{background:linear-gradient(180deg,rgba(11,24,33,.98),rgba(8,19,26,.98));border:1px solid var(--line);border-radius:12px;padding:13px;box-shadow:var(--shadow)}
+.simPanel h3{margin:0 0 12px;font-size:13px;letter-spacing:.03em}
+.simFields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 14px}
+.simField label{display:block;color:var(--muted2);font-size:10px;margin-bottom:5px}.simField input{width:100%}
+.simActions{display:flex;gap:8px;margin-top:12px}.simActions button{flex:1}
+.simTokenList{max-height:250px;overflow:auto;border:1px solid var(--line);border-radius:9px}.simToken{display:grid;grid-template-columns:28px 1fr 80px 105px;gap:8px;align-items:center;padding:8px 9px;border-bottom:1px solid #17303a}.simToken:last-child{border-bottom:0}.simToken:hover{background:#0c1a22}
+.simCheck{accent-color:var(--green);width:16px;height:16px}
+.simBadge{display:inline-block;padding:3px 6px;border-radius:6px;font-size:9px;font-weight:700}
+.simNote{font-size:10px;color:var(--muted);margin-top:8px}
+.simTable table{min-width:1200px}.simProfit{color:var(--green);font-weight:700}.simLoss{color:var(--red);font-weight:700}
+@media(max-width:900px){.simGrid{grid-template-columns:1fr}.simFields{grid-template-columns:1fr}.simToken{grid-template-columns:28px 1fr 70px 95px}}
+
 </style>
 </head>
 <body>
@@ -414,6 +430,7 @@ a:hover{text-decoration:underline}
   <div class="tabs">
     <button class="tab active" data-tab="scanner" onclick="showTab('scanner')">SCANNER</button>
     <button class="tab" data-tab="gmgn" onclick="showTab('gmgn')">GMGN BASIC INFO</button>
+    <button class="tab" data-tab="autosim" onclick="showTab('autosim')">AUTO BUY SIM <span style="color:var(--purple);font-size:9px">BETA</span></button>
   </div>
 
   <section id="scanner" class="view active">
@@ -470,6 +487,38 @@ a:hover{text-decoration:underline}
       </table>
     </div>
   </section>
+
+  <section id="autosim" class="view">
+    <div class="note"><b>AUTO BUY SIM = paper trading, tidak mengirim transaksi ke wallet.</b> Pilih token dari hasil scanner, tentukan SOL per token, TP dan SL. Harga entry/current memakai GMGN Token Info. Posisi otomatis ditutup pada TP, SL, atau bad signal dari Crypto Hunter.</div>
+    <div class="simGrid">
+      <div class="simPanel">
+        <h3>AUTO-BUY-SIMULATION_SETTINGS</h3>
+        <div class="simFields">
+          <div class="simField"><label>BUY AMOUNT / TOKEN (SOL)</label><input id="simBuySol" type="number" min="0.01" step="0.01" value="0.25"></div>
+          <div class="simField"><label>MAX CONCURRENT POSITIONS</label><input id="simMaxPos" type="number" min="1" step="1" value="5"></div>
+          <div class="simField"><label>TAKE PROFIT (%)</label><input id="simTp" type="number" min="0.1" step="0.1" value="10"></div>
+          <div class="simField"><label>STOP LOSS (%)</label><input id="simSl" type="number" min="0.1" step="0.1" value="6"></div>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;margin-top:12px"><input id="simBadExit" class="simCheck" type="checkbox" checked> <span>SELL ALL ON BAD SIGNAL</span></label>
+        <div class="simActions"><button class="primary" onclick="startSimulation(event)">▶ Start Simulation</button><button onclick="resetSimulation()">Reset</button></div>
+        <div class="simNote">Bad signal: WAIT, SKIP, EXIT_WARNING, atau EXIT_NOW. Re-entry token yang sama dimatikan pada versi uji ini.</div>
+      </div>
+      <div class="simPanel">
+        <h3>SELECT_TOKENS_FROM_SCANNER</h3>
+        <div id="simCandidates" class="simTokenList"><div class="muted" style="padding:12px">Loading candidates...</div></div>
+        <div class="simNote">Candidate awal: BUY, HOLD, RECOVERY, STRONG_WATCH, dan EARLY_WATCH. Kamu tetap memilih token mana yang mau disimulasikan.</div>
+      </div>
+    </div>
+    <div class="cards" id="simCards"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:0 2px 9px">
+      <div><b style="letter-spacing:.06em">SIMULATED POSITIONS</b> <span class="muted">Paper trading</span></div>
+      <button onclick="refreshSimulation(event)">↻ Refresh Prices</button>
+    </div>
+    <div class="tableWrap simTable">
+      <table><thead><tr><th>TOKEN</th><th>ENTRY</th><th>CURRENT</th><th>P/L</th><th>P/L SOL</th><th>BUY SOL</th><th>TP</th><th>SL</th><th>SIGNAL</th><th>STATUS</th><th>EXIT REASON</th><th>STARTED</th></tr></thead><tbody id="simBody"></tbody></table>
+    </div>
+  </section>
+
 </main>
 
 <div id="historyModal" class="modalBackdrop" onclick="closeHistoryBackdrop(event)">
@@ -547,7 +596,7 @@ function showTab(name){
   document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active",x.dataset.tab===name));
   loadCurrent();
 }
-function loadCurrent(){ return activeTab==="gmgn"?loadGmgn():loadScanner(); }
+function loadCurrent(){ if(activeTab==="gmgn")return loadGmgn(); if(activeTab==="autosim")return loadAutoSim(); return loadScanner(); }
 
 
 function historyStateClass(v){
@@ -830,6 +879,71 @@ async function gmgnActive(ev){
   catch(e){alert(e.message)}
   finally{b.disabled=false;b.textContent="Screen Active Tokens"}
 }
+
+// =========================================================
+// AUTO BUY SIM — local paper-trading state
+// =========================================================
+const SIM_KEY="cryptoHunter.autoBuySim.v1";
+function simState(){try{return JSON.parse(localStorage.getItem(SIM_KEY))||{positions:[]}}catch{return{positions:[]}}}
+function saveSim(x){localStorage.setItem(SIM_KEY,JSON.stringify(x))}
+function simPrice(n){const x=Number(n);return Number.isFinite(x)&&x>0?x:null}
+function priceFmt(n){const x=simPrice(n);if(x==null)return"—";return x>=1?`$${x.toFixed(4)}`:`$${x.toPrecision(6)}`}
+function isBadSignal(x){return ["WAIT","SKIP","EXIT_WARNING","EXIT_NOW"].includes(String(x||"").toUpperCase())}
+async function loadAutoSim(){await loadSimCandidates();renderSimulation()}
+async function loadSimCandidates(){
+  try{
+    const j=await api("/api/results");
+    const allowed=new Set(["BUY","HOLD","RECOVERY","STRONG_WATCH","EARLY_WATCH"]);
+    const a=(j.results||[]).filter(x=>allowed.has(String(x.decision||"").toUpperCase()));
+    $("#simCandidates").innerHTML=a.length?a.map(x=>`<label class="simToken"><input class="simCheck simCandidate" type="checkbox" value="${x.address}" data-symbol="${x.symbol||"?"}"><b>${x.symbol||"?"}</b><span class="${scoreClass(x.score)}">${num(x.score,0)}</span><span class="simBadge ${stateClass(x.decision)}">${x.decision}</span></label>`).join(""):`<div class="muted" style="padding:12px">Belum ada BUY / WATCH candidate.</div>`;
+  }catch(e){$("#simCandidates").innerHTML=`<div class="bad" style="padding:12px">${e.message}</div>`}
+}
+async function fetchSimQuote(address){
+  await api("/api/gmgn/basic",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({address,chain:"solana"})});
+  const g=await api("/api/gmgn/basic");
+  return (g.results||[]).find(x=>x.address===address)||null;
+}
+async function startSimulation(ev){
+  const selected=[...document.querySelectorAll(".simCandidate:checked")]; if(!selected.length)return alert("Pilih minimal 1 token.");
+  const st=simState(), open=st.positions.filter(x=>x.status==="OPEN").length;
+  const max=Math.max(1,Number($("#simMaxPos").value)||5); if(open>=max)return alert("Max concurrent positions sudah tercapai.");
+  const slots=Math.max(0,max-open), picks=selected.slice(0,slots); const b=ev.currentTarget,old=b.textContent;b.disabled=true;b.textContent="Getting GMGN prices...";
+  try{
+    for(const el of picks){
+      if(st.positions.some(x=>x.address===el.value&&x.status==="OPEN"))continue;
+      const q=await fetchSimQuote(el.value), p=simPrice(q?.price_usd); if(!p)continue;
+      st.positions.unshift({id:`${Date.now()}-${el.value.slice(0,6)}`,address:el.value,symbol:q?.symbol||el.dataset.symbol||"?",entry:p,current:p,buySol:Number($("#simBuySol").value)||.25,tp:Number($("#simTp").value)||10,sl:Number($("#simSl").value)||6,badExit:$("#simBadExit").checked,signal:"—",status:"OPEN",exitReason:"—",startedAt:new Date().toISOString(),closedAt:null});
+    }
+    saveSim(st);renderSimulation();
+  }catch(e){alert(e.message)}finally{b.disabled=false;b.textContent=old}
+}
+async function refreshSimulation(ev){
+  const st=simState(), opens=st.positions.filter(x=>x.status==="OPEN");if(!opens.length)return renderSimulation();
+  const b=ev?.currentTarget,old=b?.textContent;if(b){b.disabled=true;b.textContent="Refreshing..."}
+  try{
+    const scan=await api("/api/results"), sm=new Map((scan.results||[]).map(x=>[x.address,x]));
+    for(const p of opens){
+      try{
+        const q=await fetchSimQuote(p.address), current=simPrice(q?.price_usd);if(current)p.current=current;
+        const sr=sm.get(p.address);p.signal=sr?.decision||sr?.signal||p.signal||"—";
+        const pl=p.current&&p.entry?((p.current/p.entry)-1)*100:0;
+        if(pl>=p.tp){p.status="CLOSED";p.exitReason="TAKE_PROFIT";p.closedAt=new Date().toISOString()}
+        else if(pl<=-p.sl){p.status="CLOSED";p.exitReason="STOP_LOSS";p.closedAt=new Date().toISOString()}
+        else if(p.badExit&&isBadSignal(p.signal)){p.status="CLOSED";p.exitReason="BAD_SIGNAL";p.closedAt=new Date().toISOString()}
+      }catch(e){p.lastError=e.message}
+    }
+    saveSim(st);renderSimulation();
+  }finally{if(b){b.disabled=false;b.textContent=old}}
+}
+function renderSimulation(){
+  const a=simState().positions||[];let invested=0,net=0,wins=0,closed=0;
+  a.forEach(p=>{const pl=p.current&&p.entry?((p.current/p.entry)-1)*100:0;const sol=p.buySol*pl/100;invested+=p.buySol;net+=sol;if(p.status==="CLOSED"){closed++;if(sol>0)wins++}});
+  const open=a.filter(x=>x.status==="OPEN").length,wr=closed?wins/closed*100:0;
+  $("#simCards").innerHTML=[["POSITIONS",a.length],["OPEN",open],["CLOSED",closed],["WIN RATE",`${wr.toFixed(1)}%`],["TOTAL INVESTED",`${invested.toFixed(2)} SOL`],["NET P/L",`${net>=0?"+":""}${net.toFixed(3)} SOL`]].map(([k,v])=>`<div class="card"><small>${k}</small><strong class="${k==="NET P/L"?(net>=0?"simProfit":"simLoss"):""}">${v}</strong></div>`).join("");
+  $("#simBody").innerHTML=a.length?a.map(p=>{const pl=p.current&&p.entry?((p.current/p.entry)-1)*100:0,sol=p.buySol*pl/100;return `<tr><td><b>${p.symbol}</b><div class="addr">${p.address}</div></td><td>${priceFmt(p.entry)}</td><td>${priceFmt(p.current)}</td><td class="${pl>=0?"simProfit":"simLoss"}">${pl>=0?"+":""}${pl.toFixed(2)}%</td><td class="${sol>=0?"simProfit":"simLoss"}">${sol>=0?"+":""}${sol.toFixed(4)}</td><td>${Number(p.buySol).toFixed(2)}</td><td>+${p.tp}%</td><td>-${p.sl}%</td><td><span class="simBadge ${stateClass(p.signal)}">${p.signal}</span></td><td class="${p.status==="OPEN"?"ok":"muted"}"><b>${p.status}</b></td><td>${p.exitReason}</td><td>${new Date(p.startedAt).toLocaleString()}</td></tr>`}).join(""):`<tr><td colspan="12" class="muted">Belum ada simulasi. Pilih token lalu Start Simulation.</td></tr>`;
+}
+function resetSimulation(){if(confirm("Reset seluruh paper simulation history?")){localStorage.removeItem(SIM_KEY);renderSimulation()}}
+
 loadScanner();
 setInterval(()=>{ if(document.visibilityState==="visible") loadCurrent().catch(()=>{}); },30000);
 </script>
