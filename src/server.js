@@ -1,6 +1,8 @@
 import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 
 import {
   initDb,
@@ -32,6 +34,7 @@ import {
 
 
 const app = express();
+const execFileAsync = promisify(execFile);
 
 app.use(
   express.json({
@@ -520,6 +523,55 @@ app.post(
   }
 );
 
+
+/* =========================================================
+ * GMGN LIVE — Railway credential / CLI status only
+ * No trade is submitted by these endpoints.
+ * ========================================================= */
+
+app.get("/api/gmgn/live/status", async (_req, res) => {
+  const tradingApiKey = String(process.env.GMGN_TRADING_API_KEY || "").trim();
+  const tradingPrivateKey = String(process.env.GMGN_TRADING_PRIVATE_KEY || "").trim();
+  const apiKeyPresent = Boolean(tradingApiKey);
+  const privateKeyPresent = Boolean(tradingPrivateKey);
+  let cliConfigured = false;
+  let cliAvailable = false;
+  let detail = "";
+
+  try {
+    const { stdout = "", stderr = "" } = await execFileAsync(
+      "gmgn-cli",
+      ["config", "--check"],
+      {
+        timeout: 10000,
+        env: {
+          ...process.env,
+          // gmgn-cli expects these canonical names. Keep the existing
+          // GMGN_API_KEY reserved for scanner/basic-info calls.
+          GMGN_API_KEY: tradingApiKey,
+          GMGN_PRIVATE_KEY: tradingPrivateKey
+        }
+      }
+    );
+    cliAvailable = true;
+    cliConfigured = true;
+    detail = String(stdout || stderr || "configured").trim().slice(0, 300);
+  } catch (e) {
+    cliAvailable = e?.code !== "ENOENT";
+    detail = String(e?.stderr || e?.stdout || e?.message || "GMGN CLI check failed").trim().slice(0, 300);
+  }
+
+  res.json({
+    ok: true,
+    liveTradingEnabled: false,
+    apiKeyPresent,
+    privateKeyPresent,
+    cliAvailable,
+    cliConfigured,
+    readyForConnectionTest: apiKeyPresent && privateKeyPresent && cliAvailable && cliConfigured,
+    detail
+  });
+});
 
 /* =========================================================
  * GMGN BASIC INFO

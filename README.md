@@ -307,3 +307,12 @@ Default is 120 seconds if the variable is not set.
 
 ## AUTO BUY SIM (Beta)
 Paper-trading tab added without changing the Scanner/GMGN flow. Select scanner candidates, set SOL/token, TP, SL, and optional bad-signal exit. Entry/current prices are refreshed from GMGN Token Info. Simulation state is stored in browser localStorage and does not send wallet transactions.
+
+
+## GMGN trading credentials (Railway)
+The scanner/basic-info integration continues to use `GMGN_API_KEY`. The live-trading connection test uses separate Railway variables:
+
+- `GMGN_TRADING_API_KEY`
+- `GMGN_TRADING_PRIVATE_KEY`
+
+The server maps these two trading variables to the canonical environment names expected by `gmgn-cli` only for the trading CLI process. Do not commit either secret to Git.
