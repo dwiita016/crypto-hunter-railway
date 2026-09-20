@@ -534,6 +534,8 @@ app.get("/api/gmgn/live/status", async (_req, res) => {
   const tradingPrivateKey = String(process.env.GMGN_TRADING_PRIVATE_KEY || "").trim();
   const apiKeyPresent = Boolean(tradingApiKey);
   const privateKeyPresent = Boolean(tradingPrivateKey);
+  const tradingWallet = String(process.env.GMGN_TRADING_WALLET || "").trim();
+  const walletPresent = Boolean(tradingWallet);
   let cliConfigured = false;
   let cliAvailable = false;
   let detail = "";
@@ -568,7 +570,8 @@ app.get("/api/gmgn/live/status", async (_req, res) => {
     privateKeyPresent,
     cliAvailable,
     cliConfigured,
-    readyForConnectionTest: apiKeyPresent && privateKeyPresent && cliAvailable && cliConfigured,
+    walletPresent,
+    readyForConnectionTest: apiKeyPresent && privateKeyPresent && walletPresent && cliAvailable && cliConfigured,
     detail
   });
 });
@@ -603,6 +606,37 @@ app.get(
   }
 );
 
+
+
+app.post("/api/gmgn/live/buy", async (req, res) => {
+  const tradingApiKey = String(process.env.GMGN_TRADING_API_KEY || "").trim();
+  const tradingPrivateKey = String(process.env.GMGN_TRADING_PRIVATE_KEY || "").trim();
+  const wallet = String(process.env.GMGN_TRADING_WALLET || "").trim();
+  const address = String(req.body?.address || "").trim();
+  const amountSol = Number(req.body?.amountSol);
+  const tpPct = Number(req.body?.tpPct ?? 10);
+  const slPct = Number(req.body?.slPct ?? 6);
+  if (!tradingApiKey || !tradingPrivateKey || !wallet) return res.status(400).json({ ok:false, error:"Trading credentials/wallet belum lengkap di Railway." });
+  if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)) return res.status(400).json({ ok:false, error:"Invalid Solana token address." });
+  if (!Number.isFinite(amountSol) || amountSol < 0.01 || amountSol > 0.10) return res.status(400).json({ ok:false, error:"LIVE TEST dibatasi 0.01–0.10 SOL." });
+  if (tpPct !== 10 || slPct !== 6) return res.status(400).json({ ok:false, error:"LIVE TEST saat ini dikunci TP +10% / SL -6%." });
+  const lamports = String(Math.round(amountSol * 1_000_000_000));
+  const conditions = JSON.stringify([
+    { order_type:"profit_stop", side:"sell", price_scale:"10", sell_ratio:"100" },
+    { order_type:"loss_stop", side:"sell", price_scale:"6", sell_ratio:"100" }
+  ]);
+  const args = ["swap","--chain","sol","--from",wallet,"--input-token","So11111111111111111111111111111111111111112","--output-token",address,"--amount",lamports,"--auto-slippage","--anti-mev","--condition-orders",conditions,"--sell-ratio-type","hold_amount","--yes"];
+  try {
+    const { stdout = "", stderr = "" } = await execFileAsync("gmgn-cli", args, { timeout: 90000, env:{...process.env,GMGN_API_KEY:tradingApiKey,GMGN_PRIVATE_KEY:tradingPrivateKey,GMGN_ALLOW_AUTOMATED_TRADES:"1"}, maxBuffer:1024*1024 });
+    const raw = String(stdout || stderr || "").trim();
+    let parsed = null; try { parsed = JSON.parse(raw); } catch {}
+    const data = parsed?.data || parsed || {};
+    res.json({ ok:true, orderId:data.order_id || data.orderId || null, strategyOrderId:data.strategy_order_id || data.strategyOrderId || null, message:"GMGN swap submitted with TP/SL conditions." });
+  } catch (e) {
+    const msg=String(e?.stderr || e?.stdout || e?.message || "GMGN live buy failed").trim().slice(0,1200);
+    res.status(502).json({ ok:false, error:msg });
+  }
+});
 
 app.post(
   "/api/gmgn/basic",

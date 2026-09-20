@@ -505,7 +505,16 @@ a:hover{text-decoration:underline}
         <div class="simNote">Bad signal: WAIT, SKIP, EXIT_WARNING, atau EXIT_NOW. Jika belum kena TP/SL/bad signal, posisi ditutup pada Max Hold 24H dengan harga saat refresh. Setelah exit, harga tetap dicatat pada checkpoint 48H & 72H sejak entry untuk evaluasi apakah 24H terlalu cepat.</div>
         <div class="liveBox">
           <div class="liveRow"><div><span id="gmgnLiveDot" class="liveDot"></span> <b>GMGN RAILWAY CONNECTION</b></div><button onclick="testGmgnRailway(event)">Test Connection</button></div>
-          <div id="gmgnLiveText" class="simNote">Belum dicek. Tambahkan credential GMGN ke Railway Variables. Live BUY masih OFF.</div>
+          <div id="gmgnLiveText" class="simNote">Belum dicek. Tambahkan credential GMGN ke Railway Variables.</div>
+          <div style="border-top:1px solid var(--line);margin-top:10px;padding-top:10px">
+            <div style="font-weight:700;margin-bottom:8px">GMGN LIVE TEST</div>
+            <div class="simFields">
+              <div class="simField"><label>LIVE BUY (SOL)</label><input id="liveBuySol" type="number" value="0.10" min="0.01" max="0.10" step="0.01"></div>
+              <div class="simField"><label>TP / SL</label><div style="padding:9px 0">+10% / -6% · SELL 100%</div></div>
+            </div>
+            <div class="simNote">Pilih tepat 1 token di kanan. Live test dibatasi maksimal 0.10 SOL. Klik BUY akan meminta konfirmasi token, contract, nominal, TP dan SL.</div>
+            <button id="liveBuyBtn" class="primary" style="width:100%;margin-top:9px" onclick="liveBuySelected(event)" disabled>LIVE BUY 0.10 SOL + TP/SL</button>
+          </div>
         </div>
       </div>
       <div class="simPanel">
@@ -520,7 +529,7 @@ a:hover{text-decoration:underline}
       <button onclick="refreshSimulation(event)">↻ Refresh Prices</button>
     </div>
     <div class="tableWrap simTable">
-      <table><thead><tr><th>TOKEN</th><th>ENTRY</th><th>CURRENT</th><th>P/L</th><th>P/L SOL</th><th>BUY SOL</th><th>TP</th><th>SL</th><th>ENTRY SIGNAL</th><th>CURRENT SIGNAL</th><th>STATUS</th><th>EXIT REASON</th><th>24H EXIT</th><th>48H</th><th>72H</th><th>STARTED</th><th>DELETE</th></tr></thead><tbody id="simBody"></tbody></table>
+      <table><thead><tr><th>TOKEN</th><th>ENTRY</th><th>CURRENT</th><th>P/L</th><th>P/L SOL</th><th>BUY SOL</th><th>TP</th><th>SL</th><th>MAE</th><th>MFE</th><th>TIME TO TP</th><th>ENTRY SIGNAL</th><th>CURRENT SIGNAL</th><th>STATUS</th><th>EXIT REASON</th><th>24H EXIT</th><th>48H</th><th>72H</th><th>STARTED</th><th>DELETE</th></tr></thead><tbody id="simBody"></tbody></table>
     </div>
   </section>
 
@@ -900,8 +909,9 @@ async function testGmgnRailway(ev){
     const j=await api("/api/gmgn/live/status");
     const ready=Boolean(j.readyForConnectionTest);
     $("#gmgnLiveDot").className=`liveDot ${ready?"ok":""}`;
-    const missing=[];if(!j.apiKeyPresent)missing.push("GMGN_TRADING_API_KEY");if(!j.privateKeyPresent)missing.push("GMGN_TRADING_PRIVATE_KEY");if(!j.cliAvailable)missing.push("gmgn-cli");
-    $("#gmgnLiveText").innerHTML=ready?`<span class="ok"><b>READY</b></span> — Railway melihat credential dan GMGN CLI configured. Live BUY tetap OFF sampai endpoint trading kita aktifkan.`:`<span class="bad"><b>NOT READY</b></span> — ${missing.length?`Missing: ${missing.join(", ")}. `:""}${j.detail||"Check Railway Variables."}`;
+    const missing=[];if(!j.apiKeyPresent)missing.push("GMGN_TRADING_API_KEY");if(!j.privateKeyPresent)missing.push("GMGN_TRADING_PRIVATE_KEY");if(!j.cliAvailable)missing.push("gmgn-cli");if(!j.walletPresent)missing.push("GMGN_TRADING_WALLET");
+    $("#liveBuyBtn").disabled=!ready;
+    $("#gmgnLiveText").innerHTML=ready?`<span class="ok"><b>READY</b></span> — Trading credential + GMGN CLI siap.${j.walletPresent?" Wallet configured.":" Tambahkan GMGN_TRADING_WALLET."}`:`<span class="bad"><b>NOT READY</b></span> — ${missing.length?`Missing: ${missing.join(", ")}. `:""}${j.detail||"Check Railway Variables."}`;
   }catch(e){$("#gmgnLiveDot").className="liveDot";$("#gmgnLiveText").innerHTML=`<span class="bad">${e.message}</span>`}
   finally{if(b){b.disabled=false;b.textContent=old}}
 }
@@ -928,7 +938,7 @@ async function startSimulation(ev){
     for(const el of picks){
       if(st.positions.some(x=>x.address===el.value&&x.status==="OPEN"))continue;
       const q=await fetchSimQuote(el.value), p=simPrice(q?.price_usd); if(!p)continue;
-      st.positions.unshift({id:`${Date.now()}-${el.value.slice(0,6)}`,address:el.value,symbol:q?.symbol||el.dataset.symbol||"?",entry:p,current:p,buySol:Number($("#simBuySol").value)||.25,tp:Number($("#simTp").value)||10,sl:Number($("#simSl").value)||6,badExit:$("#simBadExit").checked,maxHold:Number($("#simMaxHold").value)||24,entrySignal:el.dataset.signal||"—",currentSignal:el.dataset.signal||"—",signal:el.dataset.signal||"—",status:"OPEN",exitReason:"—",startedAt:new Date().toISOString(),closedAt:null,exitPrice:null,price48h:null,price72h:null});
+      st.positions.unshift({id:`${Date.now()}-${el.value.slice(0,6)}`,address:el.value,symbol:q?.symbol||el.dataset.symbol||"?",entry:p,current:p,buySol:Number($("#simBuySol").value)||.25,tp:Number($("#simTp").value)||10,sl:Number($("#simSl").value)||6,badExit:$("#simBadExit").checked,maxHold:Number($("#simMaxHold").value)||24,entrySignal:el.dataset.signal||"—",currentSignal:el.dataset.signal||"—",signal:el.dataset.signal||"—",status:"OPEN",exitReason:"—",startedAt:new Date().toISOString(),closedAt:null,exitPrice:null,price48h:null,price72h:null,maePct:0,mfePct:0,tpHitAt:null});
     }
     saveSim(st);renderSimulation();
   }catch(e){alert(e.message)}finally{b.disabled=false;b.textContent=old}
@@ -952,6 +962,8 @@ async function refreshSimulation(ev){
         if(p.status!=="OPEN")continue;
         const sr=sm.get(p.address);p.currentSignal=sr?.decision||sr?.signal||p.currentSignal||p.signal||"—";p.signal=p.currentSignal;
         const pl=p.current&&p.entry?((p.current/p.entry)-1)*100:0;
+        p.maePct=Math.min(Number(p.maePct||0),pl); p.mfePct=Math.max(Number(p.mfePct||0),pl);
+        if(pl>=Number(p.tp||10) && !p.tpHitAt)p.tpHitAt=new Date().toISOString();
         let reason=null;
         if(pl>=p.tp)reason="TAKE_PROFIT";
         else if(pl<=-p.sl)reason="STOP_LOSS";
@@ -971,8 +983,23 @@ function renderSimulation(){
   a.forEach(p=>{invested+=Number(p.buySol)||0;if(p.status==="CLOSED"){const px=p.exitPrice||p.current;const pl=px&&p.entry?((px/p.entry)-1)*100:0;const sol=p.buySol*pl/100;net+=sol;closed++;if(sol>0)wins++}});
   const open=a.filter(x=>x.status==="OPEN").length,wr=closed?wins/closed*100:0;
   $("#simCards").innerHTML=[["POSITIONS",a.length],["OPEN",open],["CLOSED",closed],["WIN RATE",`${wr.toFixed(1)}%`],["TOTAL INVESTED",`${invested.toFixed(2)} SOL`],["REALIZED NET P/L",`${net>=0?"+":""}${net.toFixed(3)} SOL`]].map(([k,v])=>`<div class="card"><small>${k}</small><strong class="${k==="REALIZED NET P/L"?(net>=0?"simProfit":"simLoss"):""}">${v}</strong></div>`).join("");
-  $("#simBody").innerHTML=a.length?a.map(p=>{const px=p.status==="CLOSED"?(p.exitPrice||p.current):p.current,pl=px&&p.entry?((px/p.entry)-1)*100:0,sol=p.buySol*pl/100;const exit24=p.exitReason==="TIME_EXIT"?checkpointFmt(p,p.exitPrice):"—";return `<tr><td><b>${p.symbol}</b><div class="addr">${p.address}</div></td><td>${priceFmt(p.entry)}</td><td>${priceFmt(p.current)}</td><td class="${pl>=0?"simProfit":"simLoss"}">${pl>=0?"+":""}${pl.toFixed(2)}%</td><td class="${sol>=0?"simProfit":"simLoss"}">${sol>=0?"+":""}${sol.toFixed(4)}</td><td>${Number(p.buySol).toFixed(2)}</td><td>+${p.tp}%</td><td>-${p.sl}%</td><td><span class="simBadge ${stateClass(p.entrySignal||p.signal)}">${p.entrySignal||p.signal||"—"}</span></td><td><span class="simBadge ${stateClass(p.currentSignal||p.signal)}">${p.currentSignal||p.signal||"—"}</span></td><td class="${p.status==="OPEN"?"ok":"muted"}"><b>${p.status}</b></td><td>${p.exitReason}</td><td>${exit24}</td><td>${checkpointFmt(p,p.price48h)}</td><td>${checkpointFmt(p,p.price72h)}</td><td>${new Date(p.startedAt).toLocaleString()}</td><td><button onclick="deleteSimulation('${p.id}')">DELETE</button></td></tr>`}).join(""):`<tr><td colspan="17" class="muted">Belum ada simulasi. Pilih token lalu Start Simulation.</td></tr>`;
+  $("#simBody").innerHTML=a.length?a.map(p=>{const px=p.status==="CLOSED"?(p.exitPrice||p.current):p.current,pl=px&&p.entry?((px/p.entry)-1)*100:0,sol=p.buySol*pl/100;const exit24=p.exitReason==="TIME_EXIT"?checkpointFmt(p,p.exitPrice):"—";return `<tr><td><b>${p.symbol}</b><div class="addr">${p.address}</div></td><td>${priceFmt(p.entry)}</td><td>${priceFmt(p.current)}</td><td class="${pl>=0?"simProfit":"simLoss"}">${pl>=0?"+":""}${pl.toFixed(2)}%</td><td class="${sol>=0?"simProfit":"simLoss"}">${sol>=0?"+":""}${sol.toFixed(4)}</td><td>${Number(p.buySol).toFixed(2)}</td><td>+${p.tp}%</td><td>-${p.sl}%</td><td class="simLoss">${Number(p.maePct||0).toFixed(2)}%</td><td class="simProfit">+${Number(p.mfePct||0).toFixed(2)}%</td><td>${p.tpHitAt?(((new Date(p.tpHitAt)-new Date(p.startedAt))/36e5).toFixed(2)+"h"):"—"}</td><td><span class="simBadge ${stateClass(p.entrySignal||p.signal)}">${p.entrySignal||p.signal||"—"}</span></td><td><span class="simBadge ${stateClass(p.currentSignal||p.signal)}">${p.currentSignal||p.signal||"—"}</span></td><td class="${p.status==="OPEN"?"ok":"muted"}"><b>${p.status}</b></td><td>${p.exitReason}</td><td>${exit24}</td><td>${checkpointFmt(p,p.price48h)}</td><td>${checkpointFmt(p,p.price72h)}</td><td>${new Date(p.startedAt).toLocaleString()}</td><td><button onclick="deleteSimulation('${p.id}')">DELETE</button></td></tr>`}).join(""):`<tr><td colspan="20" class="muted">Belum ada simulasi. Pilih token lalu Start Simulation.</td></tr>`;
 }
+async function liveBuySelected(ev){
+  const selected=[...document.querySelectorAll(".simCandidate:checked")];
+  if(selected.length!==1)return alert("Pilih tepat 1 token untuk GMGN LIVE TEST.");
+  const el=selected[0], amount=Math.min(0.10,Math.max(0.01,Number($("#liveBuySol").value)||0.10));
+  $("#liveBuySol").value=amount.toFixed(2);
+  const symbol=el.dataset.symbol||"?", address=el.value;
+  const ok=confirm(`REAL GMGN BUY\n\nToken: ${symbol}\nContract: ${address}\nAmount: ${amount.toFixed(2)} SOL\nTake Profit: +10% (sell 100%)\nStop Loss: -6% (sell 100%)\n\nIni transaksi REAL. Lanjutkan?`);
+  if(!ok)return;
+  const b=ev.currentTarget,old=b.textContent;b.disabled=true;b.textContent="Submitting GMGN order...";
+  try{
+    const j=await api("/api/gmgn/live/buy",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({address,amountSol:amount,tpPct:10,slPct:6})});
+    alert(`GMGN order submitted\n${j.orderId?"Order: "+j.orderId+"\n":""}${j.strategyOrderId?"TP/SL Strategy: "+j.strategyOrderId+"\n":""}Check GMGN wallet/orders untuk status fill.`);
+  }catch(e){alert(`LIVE BUY FAILED: ${e.message}`)}finally{b.disabled=false;b.textContent=old}
+}
+
 function resetSimulation(){if(confirm("Clear seluruh paper simulation history? Semua data simulasi akan dihapus dan tidak dapat dikembalikan.")){localStorage.removeItem(SIM_KEY);renderSimulation()}}
 
 loadScanner();
