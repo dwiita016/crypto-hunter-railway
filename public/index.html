@@ -524,12 +524,13 @@ a:hover{text-decoration:underline}
       </div>
     </div>
     <div class="cards" id="simCards"></div>
+    <div id="simAnalytics" class="simNote" style="margin:0 0 10px 0"></div>
     <div style="display:flex;justify-content:space-between;align-items:center;padding:0 2px 9px">
       <div><b style="letter-spacing:.06em">SIMULATED POSITIONS</b> <span class="muted">Paper trading</span></div>
       <button onclick="refreshSimulation(event)">↻ Refresh Prices</button>
     </div>
     <div class="tableWrap simTable">
-      <table><thead><tr><th>TOKEN</th><th>ENTRY</th><th>CURRENT</th><th>P/L</th><th>P/L SOL</th><th>BUY SOL</th><th>TP</th><th>SL</th><th>MAE</th><th>MFE</th><th>TIME TO TP</th><th>ENTRY SIGNAL</th><th>CURRENT SIGNAL</th><th>STATUS</th><th>EXIT REASON</th><th>24H EXIT</th><th>48H</th><th>72H</th><th>STARTED</th><th>DELETE</th></tr></thead><tbody id="simBody"></tbody></table>
+      <table><thead><tr><th>TOKEN</th><th>ENTRY</th><th>EXIT PRICE</th><th>CURRENT</th><th>P/L</th><th>P/L SOL</th><th>BUY SOL</th><th>TP</th><th>SL</th><th>MAE</th><th>MFE</th><th>EXIT OVERSHOOT</th><th>TIME TO TP</th><th>ENTRY SIGNAL</th><th>CURRENT SIGNAL</th><th>STATUS</th><th>EXIT REASON</th><th>24H AFTER</th><th>48H AFTER</th><th>72H AFTER</th><th>STARTED</th><th>DELETE</th></tr></thead><tbody id="simBody"></tbody></table>
     </div>
   </section>
 
@@ -938,7 +939,7 @@ async function startSimulation(ev){
     for(const el of picks){
       if(st.positions.some(x=>x.address===el.value&&x.status==="OPEN"))continue;
       const q=await fetchSimQuote(el.value), p=simPrice(q?.price_usd); if(!p)continue;
-      st.positions.unshift({id:`${Date.now()}-${el.value.slice(0,6)}`,address:el.value,symbol:q?.symbol||el.dataset.symbol||"?",entry:p,current:p,buySol:Number($("#simBuySol").value)||.25,tp:Number($("#simTp").value)||10,sl:Number($("#simSl").value)||6,badExit:$("#simBadExit").checked,maxHold:Number($("#simMaxHold").value)||24,entrySignal:el.dataset.signal||"—",currentSignal:el.dataset.signal||"—",signal:el.dataset.signal||"—",status:"OPEN",exitReason:"—",startedAt:new Date().toISOString(),closedAt:null,exitPrice:null,price48h:null,price72h:null,maePct:0,mfePct:0,tpHitAt:null});
+      st.positions.unshift({id:`${Date.now()}-${el.value.slice(0,6)}`,address:el.value,symbol:q?.symbol||el.dataset.symbol||"?",entry:p,current:p,buySol:Number($("#simBuySol").value)||.25,tp:Number($("#simTp").value)||10,sl:Number($("#simSl").value)||6,badExit:$("#simBadExit").checked,maxHold:Number($("#simMaxHold").value)||24,entrySignal:el.dataset.signal||"—",currentSignal:el.dataset.signal||"—",signal:el.dataset.signal||"—",status:"OPEN",exitReason:"—",startedAt:new Date().toISOString(),closedAt:null,exitPrice:null,price24h:null,price48h:null,price72h:null,maePct:0,mfePct:0,tpHitAt:null});
     }
     saveSim(st);renderSimulation();
   }catch(e){alert(e.message)}finally{b.disabled=false;b.textContent=old}
@@ -947,7 +948,7 @@ async function refreshSimulation(ev){
   const st=simState(), now=Date.now();
   const track=st.positions.filter(p=>{
     const ageH=(now-new Date(p.startedAt).getTime())/36e5;
-    return p.status==="OPEN" || (ageH>=48 && p.price48h==null) || (ageH>=72 && p.price72h==null);
+    return p.status==="OPEN" || (ageH>=24 && p.price24h==null) || (ageH>=48 && p.price48h==null) || (ageH>=72 && p.price72h==null);
   });
   if(!track.length)return renderSimulation();
   const b=ev?.currentTarget,old=b?.textContent;if(b){b.disabled=true;b.textContent="Refreshing..."}
@@ -955,11 +956,14 @@ async function refreshSimulation(ev){
     const scan=await api("/api/results"), sm=new Map((scan.results||[]).map(x=>[x.address,x]));
     for(const p of track){
       try{
-        const q=await fetchSimQuote(p.address), current=simPrice(q?.price_usd);if(current)p.current=current;
+        const q=await fetchSimQuote(p.address), current=simPrice(q?.price_usd); if(!current)continue;
         const ageH=(Date.now()-new Date(p.startedAt).getTime())/36e5;
-        if(ageH>=48 && p.price48h==null && current)p.price48h=current;
-        if(ageH>=72 && p.price72h==null && current)p.price72h=current;
+        // Checkpoints are fixed to elapsed time since entry, even after the position closes.
+        if(ageH>=24 && p.price24h==null)p.price24h=current;
+        if(ageH>=48 && p.price48h==null)p.price48h=current;
+        if(ageH>=72 && p.price72h==null)p.price72h=current;
         if(p.status!=="OPEN")continue;
+        p.current=current;
         const sr=sm.get(p.address);p.currentSignal=sr?.decision||sr?.signal||p.currentSignal||p.signal||"—";p.signal=p.currentSignal;
         const pl=p.current&&p.entry?((p.current/p.entry)-1)*100:0;
         p.maePct=Math.min(Number(p.maePct||0),pl); p.mfePct=Math.max(Number(p.mfePct||0),pl);
@@ -969,22 +973,27 @@ async function refreshSimulation(ev){
         else if(pl<=-p.sl)reason="STOP_LOSS";
         else if(p.badExit&&isBadSignal(p.currentSignal||p.signal))reason="BAD_SIGNAL";
         else if(ageH>=Number(p.maxHold||24))reason="TIME_EXIT";
-        if(reason){p.status="CLOSED";p.exitReason=reason;p.closedAt=new Date().toISOString();p.exitPrice=p.current}
+        if(reason){p.status="CLOSED";p.exitReason=reason;p.closedAt=new Date().toISOString();p.exitPrice=p.current;if(ageH>=24&&p.price24h==null)p.price24h=p.current}
       }catch(e){p.lastError=e.message}
     }
     saveSim(st);renderSimulation();
   }finally{if(b){b.disabled=false;b.textContent=old}}
 }
 function simCheckpointPct(p,price){return price&&p.entry?((price/p.entry)-1)*100:null}
+function postExitPct(p,price){return price&&p.exitPrice?((price/p.exitPrice)-1)*100:null}
 function checkpointFmt(p,price){const v=simCheckpointPct(p,price);return v==null?"—":`<span class="${v>=0?"simProfit":"simLoss"}">${v>=0?"+":""}${v.toFixed(2)}%</span>`}
+function postExitFmt(p,price){const v=postExitPct(p,price);return v==null?"—":`<span class="${v>=0?"simProfit":"simLoss"}">${v>=0?"+":""}${v.toFixed(2)}%</span>`}
+function exitOvershootFmt(p,pl){if(p.status!=="CLOSED"||!p.exitReason)return"—";let target=null;if(p.exitReason==="STOP_LOSS")target=-Number(p.sl||0);else if(p.exitReason==="TAKE_PROFIT")target=Number(p.tp||0);if(target==null)return"—";const v=pl-target;return `<span class="${v>=0?"simProfit":"simLoss"}">${v>=0?"+":""}${v.toFixed(2)}pp</span>`}
 function deleteSimulation(id){const st=simState();const p=st.positions.find(x=>x.id===id);if(!p)return;if(confirm(`Delete ${p.symbol} dari paper simulation? Data ini tidak akan dihitung di statistik.`)){st.positions=st.positions.filter(x=>x.id!==id);saveSim(st);renderSimulation()}}
 function renderSimulation(){
-  const a=simState().positions||[];let invested=0,net=0,wins=0,closed=0;
-  a.forEach(p=>{invested+=Number(p.buySol)||0;if(p.status==="CLOSED"){const px=p.exitPrice||p.current;const pl=px&&p.entry?((px/p.entry)-1)*100:0;const sol=p.buySol*pl/100;net+=sol;closed++;if(sol>0)wins++}});
-  const open=a.filter(x=>x.status==="OPEN").length,wr=closed?wins/closed*100:0;
+  const a=simState().positions||[];let invested=0,net=0,wins=0,closed=0,winSum=0,lossSum=0,maeSum=0,mfeSum=0,maeN=0,mfeN=0;const reasons={STOP_LOSS:0,BAD_SIGNAL:0,TAKE_PROFIT:0,TIME_EXIT:0};
+  a.forEach(p=>{invested+=Number(p.buySol)||0;maeSum+=Number(p.maePct||0);mfeSum+=Number(p.mfePct||0);maeN++;mfeN++;if(p.status==="CLOSED"){const px=p.exitPrice||p.current;const pl=px&&p.entry?((px/p.entry)-1)*100:0;const sol=p.buySol*pl/100;net+=sol;closed++;if(sol>0){wins++;winSum+=pl}else if(sol<0)lossSum+=pl;if(reasons[p.exitReason]!=null)reasons[p.exitReason]++}});
+  const open=a.filter(x=>x.status==="OPEN").length,wr=closed?wins/closed*100:0,avgWin=wins?winSum/wins:0,lossN=closed-wins,avgLoss=lossN?lossSum/lossN:0,avgMae=maeN?maeSum/maeN:0,avgMfe=mfeN?mfeSum/mfeN:0;
   $("#simCards").innerHTML=[["POSITIONS",a.length],["OPEN",open],["CLOSED",closed],["WIN RATE",`${wr.toFixed(1)}%`],["TOTAL INVESTED",`${invested.toFixed(2)} SOL`],["REALIZED NET P/L",`${net>=0?"+":""}${net.toFixed(3)} SOL`]].map(([k,v])=>`<div class="card"><small>${k}</small><strong class="${k==="REALIZED NET P/L"?(net>=0?"simProfit":"simLoss"):""}">${v}</strong></div>`).join("");
-  $("#simBody").innerHTML=a.length?a.map(p=>{const px=p.status==="CLOSED"?(p.exitPrice||p.current):p.current,pl=px&&p.entry?((px/p.entry)-1)*100:0,sol=p.buySol*pl/100;const exit24=p.exitReason==="TIME_EXIT"?checkpointFmt(p,p.exitPrice):"—";return `<tr><td><b>${p.symbol}</b><div class="addr">${p.address}</div></td><td>${priceFmt(p.entry)}</td><td>${priceFmt(p.current)}</td><td class="${pl>=0?"simProfit":"simLoss"}">${pl>=0?"+":""}${pl.toFixed(2)}%</td><td class="${sol>=0?"simProfit":"simLoss"}">${sol>=0?"+":""}${sol.toFixed(4)}</td><td>${Number(p.buySol).toFixed(2)}</td><td>+${p.tp}%</td><td>-${p.sl}%</td><td class="simLoss">${Number(p.maePct||0).toFixed(2)}%</td><td class="simProfit">+${Number(p.mfePct||0).toFixed(2)}%</td><td>${p.tpHitAt?(((new Date(p.tpHitAt)-new Date(p.startedAt))/36e5).toFixed(2)+"h"):"—"}</td><td><span class="simBadge ${stateClass(p.entrySignal||p.signal)}">${p.entrySignal||p.signal||"—"}</span></td><td><span class="simBadge ${stateClass(p.currentSignal||p.signal)}">${p.currentSignal||p.signal||"—"}</span></td><td class="${p.status==="OPEN"?"ok":"muted"}"><b>${p.status}</b></td><td>${p.exitReason}</td><td>${exit24}</td><td>${checkpointFmt(p,p.price48h)}</td><td>${checkpointFmt(p,p.price72h)}</td><td>${new Date(p.startedAt).toLocaleString()}</td><td><button onclick="deleteSimulation('${p.id}')">DELETE</button></td></tr>`}).join(""):`<tr><td colspan="20" class="muted">Belum ada simulasi. Pilih token lalu Start Simulation.</td></tr>`;
+  $("#simAnalytics").innerHTML=closed?`<b>EXIT ANALYTICS</b> · Avg Win <span class="simProfit">+${avgWin.toFixed(2)}%</span> · Avg Loss <span class="simLoss">${avgLoss.toFixed(2)}%</span> · Avg MAE <span class="simLoss">${avgMae.toFixed(2)}%</span> · Avg MFE <span class="simProfit">+${avgMfe.toFixed(2)}%</span> · STOP_LOSS ${reasons.STOP_LOSS} · BAD_SIGNAL ${reasons.BAD_SIGNAL} · TAKE_PROFIT ${reasons.TAKE_PROFIT} · TIME_EXIT ${reasons.TIME_EXIT}`:`<b>EXIT ANALYTICS</b> · Belum ada posisi closed.`;
+  $("#simBody").innerHTML=a.length?a.map(p=>{const px=p.status==="CLOSED"?(p.exitPrice||p.current):p.current,pl=px&&p.entry?((px/p.entry)-1)*100:0,sol=p.buySol*pl/100;const currentDisplay=p.status==="CLOSED"?(p.exitPrice||p.current):p.current;return `<tr><td><b>${p.symbol}</b><div class="addr">${p.address}</div></td><td>${priceFmt(p.entry)}</td><td>${priceFmt(p.exitPrice)}</td><td>${priceFmt(currentDisplay)}</td><td class="${pl>=0?"simProfit":"simLoss"}">${pl>=0?"+":""}${pl.toFixed(2)}%</td><td class="${sol>=0?"simProfit":"simLoss"}">${sol>=0?"+":""}${sol.toFixed(4)}</td><td>${Number(p.buySol).toFixed(2)}</td><td>+${p.tp}%</td><td>-${p.sl}%</td><td class="simLoss">${Number(p.maePct||0).toFixed(2)}%</td><td class="simProfit">+${Number(p.mfePct||0).toFixed(2)}%</td><td>${exitOvershootFmt(p,pl)}</td><td>${p.tpHitAt?(((new Date(p.tpHitAt)-new Date(p.startedAt))/36e5).toFixed(2)+"h"):"—"}</td><td><span class="simBadge ${stateClass(p.entrySignal||p.signal)}">${p.entrySignal||p.signal||"—"}</span></td><td><span class="simBadge ${stateClass(p.currentSignal||p.signal)}">${p.currentSignal||p.signal||"—"}</span></td><td class="${p.status==="OPEN"?"ok":"muted"}"><b>${p.status}</b></td><td>${p.exitReason}</td><td>${postExitFmt(p,p.price24h)}</td><td>${postExitFmt(p,p.price48h)}</td><td>${postExitFmt(p,p.price72h)}</td><td>${new Date(p.startedAt).toLocaleString()}</td><td><button onclick="deleteSimulation('${p.id}')">DELETE</button></td></tr>`}).join(""):`<tr><td colspan="22" class="muted">Belum ada simulasi. Pilih token lalu Start Simulation.</td></tr>`;
 }
+
 async function liveBuySelected(ev){
   const selected=[...document.querySelectorAll(".simCandidate:checked")];
   if(selected.length!==1)return alert("Pilih tepat 1 token untuk GMGN LIVE TEST.");
